@@ -330,6 +330,23 @@ class FuelSalesOrderResource extends Resource
                     ->sortable(),
             ])
             ->defaultSort('date_ordered', 'desc')
+            ->recordClasses(function (FuelSalesOrder $record): string {
+                $balance = round((float) $record->balance_amount, 2);
+                $status = strtolower((string) $record->status);
+
+                return match (true) {
+                    // RED if there is still balance or not fully paid
+                    in_array($status, ['unpaid', 'partial'], true)
+                        || abs($balance) > 0.00
+                    => 'supplier-order-row-balance',
+
+                    // GREEN if fully paid
+                    $status === 'paid'
+                    => 'supplier-order-row-paid',
+
+                    default => '',
+                };
+            })
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),

@@ -92,6 +92,22 @@ class AdminPanelProvider extends PanelProvider
             tr.customer-purchase-row-overpaid:hover > td {
                 background-color: rgba(59, 130, 246, 0.40) !important;
             }
+
+               tr.supplier-order-row-paid > td {
+        background-color: rgba(34, 197, 94, 0.30) !important;
+    }
+
+    tr.supplier-order-row-paid:hover > td {
+        background-color: rgba(34, 197, 94, 0.45) !important;
+    }
+
+    tr.supplier-order-row-balance > td {
+        background-color: rgba(239, 68, 68, 0.35) !important;
+    }
+
+    tr.supplier-order-row-balance:hover > td {
+        background-color: rgba(239, 68, 68, 0.50) !important;
+    }
         </style>
     HTML)
             )
