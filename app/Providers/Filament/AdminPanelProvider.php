@@ -17,6 +17,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Illuminate\Support\HtmlString;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -64,6 +65,36 @@ class AdminPanelProvider extends PanelProvider
                 \App\Filament\Widgets\FuelCustomerPurchaseStatsOverview::class,
                 \App\Filament\Widgets\FuelSalesStatsOverview::class,
             ])
+            ->renderHook(
+                'panels::head.end',
+                fn(): HtmlString => new HtmlString(<<<'HTML'
+        <style>
+            tr.customer-purchase-row-paid > td {
+                background-color: rgba(34, 197, 94, 0.28) !important;
+            }
+
+            tr.customer-purchase-row-paid:hover > td {
+                background-color: rgba(34, 197, 94, 0.42) !important;
+            }
+
+            tr.customer-purchase-row-balance > td {
+                background-color: rgba(239, 68, 68, 0.30) !important;
+            }
+
+            tr.customer-purchase-row-balance:hover > td {
+                background-color: rgba(239, 68, 68, 0.45) !important;
+            }
+
+            tr.customer-purchase-row-overpaid > td {
+                background-color: rgba(59, 130, 246, 0.25) !important;
+            }
+
+            tr.customer-purchase-row-overpaid:hover > td {
+                background-color: rgba(59, 130, 246, 0.40) !important;
+            }
+        </style>
+    HTML)
+            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

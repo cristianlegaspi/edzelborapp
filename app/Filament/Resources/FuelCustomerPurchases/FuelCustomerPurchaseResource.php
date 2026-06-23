@@ -610,20 +610,8 @@ class FuelCustomerPurchaseResource extends Resource
             ? (float) $record->payments()->sum('amount')
             : 0;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Correct Net Income Formula
-        |--------------------------------------------------------------------------
-        | NET INCOME = PAYABLES - SUB-TOTAL W/ FREIGHT
-        */
         $netIncome = $totalPayables - $totalPayableToSupplier;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Balance / Short / Over Formula
-        |--------------------------------------------------------------------------
-        | PAYMENT - PAYABLES
-        */
         $balanceShortOver = $paymentAmount - $totalPayables;
 
         $status = 'unpaid';
@@ -723,6 +711,19 @@ class FuelCustomerPurchaseResource extends Resource
                     ->sortable(),
             ])
             ->defaultSort('date_ordered', 'desc')
+            ->recordClasses(function (FuelCustomerPurchase $record): string {
+                return match (true) {
+                    $record->status === 'paid' => 'customer-purchase-row-paid',
+
+                    in_array($record->status, ['unpaid', 'partial'], true)
+                        || (float) $record->balance_short_over < 0
+                        => 'customer-purchase-row-balance',
+
+                    $record->status === 'overpaid' => 'customer-purchase-row-overpaid',
+
+                    default => '',
+                };
+            })
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make(),
