@@ -20,12 +20,10 @@ class CreateFuelCustomerPurchase extends CreateRecord
         return static::getResource()::getUrl('index');
     }
 
-    protected function mutateFormDataBeforeCreate(array $data): array
-    {
-        $totals = FuelCustomerPurchaseResource::calculateTotalsFromData($data);
+   protected function mutateFormDataBeforeCreate(array $data): array
+{
+    $totals = \App\Filament\Resources\FuelCustomerPurchases\FuelCustomerPurchaseResource::calculateTotalsFromData($data);
 
-        unset($totals['total_expenses']);
-
-        return array_merge($data, $totals);
-    }
+    return array_merge($data, $totals);
+}
 }

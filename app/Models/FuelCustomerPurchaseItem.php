@@ -50,20 +50,20 @@ class FuelCustomerPurchaseItem extends Model
 
     protected static function booted(): void
     {
-        static::saving(function (FuelCustomerPurchaseItem $item) {
+        static::saving(function (FuelCustomerPurchaseItem $item): void {
             $item->fuel_product = strtoupper((string) $item->fuel_product);
 
-            $liters = (float) $item->liters;
+            $liters = (float) ($item->liters ?? 0);
 
             self::validateAvailableStock($item, $liters);
 
-            $freightAlwin = (float) $item->freight_alwin;
-            $freightTanker = (float) $item->freight_tanker;
-            $freight040 = (float) $item->freight_040;
+            $freightAlwin = (float) ($item->freight_alwin ?? 0);
+            $freightTanker = (float) ($item->freight_tanker ?? 0);
+            $freight040 = (float) ($item->freight_040 ?? 0);
 
-            $amountPerLiter = (float) $item->amount_per_liter;
-            $sellingPrice = (float) $item->selling_price;
-            $ewtRate = (float) $item->ewt_rate;
+            $amountPerLiter = (float) ($item->amount_per_liter ?? 0);
+            $sellingPrice = (float) ($item->selling_price ?? 0);
+            $ewtRate = (float) ($item->ewt_rate ?? 0);
 
             $vatDivisor = 1.12;
 
@@ -86,6 +86,15 @@ class FuelCustomerPurchaseItem extends Model
 
             $payables = round($subtotalSellingPrice - $lessEwtRate, 2);
 
+            /*
+            |--------------------------------------------------------------------------
+            | Item Net Income
+            |--------------------------------------------------------------------------
+            | Item Net Income = Payables - Sub-total w/ Freight
+            |
+            | The main purchase net income will deduct Garage, Agent Comm,
+            | Receiver, and Others Amount inside FuelCustomerPurchase model.
+            */
             $netIncome = round($payables - $subtotalWithFreight, 2);
 
             $item->subtotal_without_freight = $subtotalWithoutFreight;
@@ -97,17 +106,34 @@ class FuelCustomerPurchaseItem extends Model
             $item->net_income = $netIncome;
         });
 
-        static::saved(function (FuelCustomerPurchaseItem $item) {
+        static::saved(function (FuelCustomerPurchaseItem $item): void {
+            $item->customerPurchase?->recalculateTotals();
+            $item->customerPurchase?->salesOrder?->recalculateStocks();
+
+            /*
+            |--------------------------------------------------------------------------
+            | If item was moved to another customer purchase
+            |--------------------------------------------------------------------------
+            | Recalculate the old purchase also.
+            */
+            if ($item->wasChanged('fuel_customer_purchase_id')) {
+                $oldPurchaseId = $item->getOriginal('fuel_customer_purchase_id');
+
+                if ($oldPurchaseId && $oldPurchaseId != $item->fuel_customer_purchase_id) {
+                    $oldPurchase = FuelCustomerPurchase::query()->find($oldPurchaseId);
+
+                    $oldPurchase?->recalculateTotals();
+                    $oldPurchase?->salesOrder?->recalculateStocks();
+                }
+            }
+        });
+
+        static::deleted(function (FuelCustomerPurchaseItem $item): void {
             $item->customerPurchase?->recalculateTotals();
             $item->customerPurchase?->salesOrder?->recalculateStocks();
         });
 
-        static::deleted(function (FuelCustomerPurchaseItem $item) {
-            $item->customerPurchase?->recalculateTotals();
-            $item->customerPurchase?->salesOrder?->recalculateStocks();
-        });
-
-        static::restored(function (FuelCustomerPurchaseItem $item) {
+        static::restored(function (FuelCustomerPurchaseItem $item): void {
             $item->customerPurchase?->recalculateTotals();
             $item->customerPurchase?->salesOrder?->recalculateStocks();
         });
@@ -140,7 +166,7 @@ class FuelCustomerPurchaseItem extends Model
 
         $alreadySoldQuery = FuelCustomerPurchaseItem::query()
             ->where('fuel_product', $fuelProduct)
-            ->whereHas('customerPurchase', function ($query) use ($purchase) {
+            ->whereHas('customerPurchase', function ($query) use ($purchase): void {
                 $query->where('fuel_sales_order_id', $purchase->fuel_sales_order_id);
             });
 
@@ -150,7 +176,8 @@ class FuelCustomerPurchaseItem extends Model
 
         $alreadySold = (float) $alreadySoldQuery->sum('liters');
 
-        $originalStock = (float) $supplierItem->quantity_liters;
+        $originalStock = (float) ($supplierItem->quantity_liters ?? 0);
+
         $availableStock = round($originalStock - $alreadySold, 2);
 
         if ($liters > $availableStock) {
@@ -161,6 +188,11 @@ class FuelCustomerPurchaseItem extends Model
     }
 
     public function customerPurchase(): BelongsTo
+    {
+        return $this->belongsTo(FuelCustomerPurchase::class, 'fuel_customer_purchase_id');
+    }
+
+    public function purchase(): BelongsTo
     {
         return $this->belongsTo(FuelCustomerPurchase::class, 'fuel_customer_purchase_id');
     }

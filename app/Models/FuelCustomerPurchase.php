@@ -65,26 +65,27 @@ class FuelCustomerPurchase extends Model
 
     protected static function booted(): void
     {
-        static::saved(function (FuelCustomerPurchase $purchase) {
+        static::saved(function (FuelCustomerPurchase $purchase): void {
+            $fuelSalesOrderChanged = $purchase->wasChanged('fuel_sales_order_id');
+            $oldSalesOrderId = $purchase->getOriginal('fuel_sales_order_id');
+
             $purchase->recalculateTotals();
+
             $purchase->salesOrder?->recalculateStocks();
 
-            if ($purchase->wasChanged('fuel_sales_order_id')) {
-                $oldSalesOrderId = $purchase->getOriginal('fuel_sales_order_id');
-
-                if ($oldSalesOrderId && $oldSalesOrderId != $purchase->fuel_sales_order_id) {
-                    FuelSalesOrder::query()
-                        ->find($oldSalesOrderId)
-                        ?->recalculateStocks();
-                }
+            if ($fuelSalesOrderChanged && $oldSalesOrderId && $oldSalesOrderId != $purchase->fuel_sales_order_id) {
+                FuelSalesOrder::query()
+                    ->find($oldSalesOrderId)
+                    ?->recalculateStocks();
             }
         });
 
-        static::deleted(function (FuelCustomerPurchase $purchase) {
+        static::deleted(function (FuelCustomerPurchase $purchase): void {
             $purchase->salesOrder?->recalculateStocks();
         });
 
-        static::restored(function (FuelCustomerPurchase $purchase) {
+        static::restored(function (FuelCustomerPurchase $purchase): void {
+            $purchase->recalculateTotals();
             $purchase->salesOrder?->recalculateStocks();
         });
     }
@@ -96,58 +97,124 @@ class FuelCustomerPurchase extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(FuelCustomerPurchaseItem::class);
+        return $this->hasMany('App\Models\FuelCustomerPurchaseItem', 'fuel_customer_purchase_id');
     }
 
     public function payments(): HasMany
     {
-        return $this->hasMany(FuelCustomerPayment::class);
+        return $this->hasMany('App\Models\FuelCustomerPayment', 'fuel_customer_purchase_id');
     }
 
     public function recalculateTotals(): void
     {
-        $totalLiters = (float) $this->items()->sum('liters');
+        $items = $this->items()->get();
 
-        $totalSubtotalWithoutFreight = (float) $this->items()->sum('subtotal_without_freight');
-        $totalPayableToSupplier = (float) $this->items()->sum('payable_to_supplier');
-        $totalSubtotalWithFreight = (float) $this->items()->sum('subtotal_with_freight');
+        $totalLiters = 0;
+        $totalSubtotalWithoutFreight = 0;
+        $totalPayableToSupplier = 0;
+        $totalSubtotalWithFreight = 0;
+        $totalSellingAmount = 0;
+        $totalLessEwt = 0;
+        $totalPayables = 0;
 
-        $totalSellingAmount = (float) $this->items()->sum('subtotal_selling_price');
-        $totalLessEwt = (float) $this->items()->sum('less_ewt_rate');
-        $totalPayables = (float) $this->items()->sum('payables');
+        foreach ($items as $item) {
+            $liters = (float) ($item->liters ?? 0);
+            $freightAlwin = (float) ($item->freight_alwin ?? 0);
+            $freightTanker = (float) ($item->freight_tanker ?? 0);
+            $freight040 = (float) ($item->freight_040 ?? 0);
+            $amountPerLiter = (float) ($item->amount_per_liter ?? 0);
+            $sellingPrice = (float) ($item->selling_price ?? 0);
+            $ewtRate = (float) ($item->ewt_rate ?? 0);
 
-        $netIncome = round($totalPayables - $totalSubtotalWithFreight, 2);
+            $subtotalWithoutFreight = round($liters * $amountPerLiter, 2);
 
-        $paymentAmount = (float) $this->payments()->sum('amount');
+            $subtotalWithFreight = round(
+                $subtotalWithoutFreight + ($liters * ($freightAlwin + $freightTanker + $freight040)),
+                2
+            );
 
+            $subtotalSellingPrice = round($liters * $sellingPrice, 2);
+
+            $lessEwt = 0;
+
+            if ($subtotalSellingPrice > 0 && $ewtRate > 0) {
+                $lessEwt = round(($subtotalSellingPrice / 1.12) * $ewtRate, 2);
+            }
+
+            $payables = round($subtotalSellingPrice - $lessEwt, 2);
+
+            $itemNetIncome = round($payables - $subtotalWithFreight, 2);
+
+            $item->forceFill([
+                'subtotal_without_freight' => $subtotalWithoutFreight,
+                'payable_to_supplier' => $subtotalWithFreight,
+                'subtotal_with_freight' => $subtotalWithFreight,
+                'subtotal_selling_price' => $subtotalSellingPrice,
+                'less_ewt_rate' => $lessEwt,
+                'payables' => $payables,
+                'net_income' => $itemNetIncome,
+            ])->saveQuietly();
+
+            $totalLiters += $liters;
+            $totalSubtotalWithoutFreight += $subtotalWithoutFreight;
+            $totalPayableToSupplier += $subtotalWithFreight;
+            $totalSubtotalWithFreight += $subtotalWithFreight;
+            $totalSellingAmount += $subtotalSellingPrice;
+            $totalLessEwt += $lessEwt;
+            $totalPayables += $payables;
+        }
+
+        $paymentAmount = round((float) $this->payments()->sum('amount'), 2);
+
+        $garage = (float) ($this->garage ?? 0);
+        $agentComm = (float) ($this->agent_comm ?? 0);
+        $receiver = (float) ($this->receiver ?? 0);
+        $othersAmount = (float) ($this->others_amount ?? 0);
+
+        $totalExpenses = round($garage + $agentComm + $receiver + $othersAmount, 2);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Net Income
+        |--------------------------------------------------------------------------
+        | Net Income = Total Payables - Sub-total w/ Freight - Expenses
+        */
+        $netIncome = round($totalPayables - $totalSubtotalWithFreight - $totalExpenses, 2);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Balance / Short / Over
+        |--------------------------------------------------------------------------
+        | Negative = remaining balance
+        | Zero = fully paid
+        | Positive = overpayment
+        */
         $balanceShortOver = round($paymentAmount - $totalPayables, 2);
 
-        $status = 'unpaid';
-
-        if ($paymentAmount > 0 && $paymentAmount < $totalPayables) {
+        if ($totalPayables <= 0) {
+            $status = $paymentAmount > 0 ? 'overpaid' : 'unpaid';
+        } elseif ($paymentAmount <= 0) {
+            $status = 'unpaid';
+        } elseif ($paymentAmount < $totalPayables) {
             $status = 'partial';
-        }
-
-        if ($paymentAmount == $totalPayables && $totalPayables > 0) {
+        } elseif ($paymentAmount == $totalPayables) {
             $status = 'paid';
-        }
-
-        if ($paymentAmount > $totalPayables && $totalPayables > 0) {
+        } else {
             $status = 'overpaid';
         }
 
-        $this->updateQuietly([
-            'total_liters' => $totalLiters,
-            'total_subtotal_without_freight' => $totalSubtotalWithoutFreight,
-            'total_payable_to_supplier' => $totalPayableToSupplier,
-            'total_subtotal_with_freight' => $totalSubtotalWithFreight,
-            'total_selling_amount' => $totalSellingAmount,
-            'total_less_ewt' => $totalLessEwt,
-            'total_payables' => $totalPayables,
+        $this->forceFill([
+            'total_liters' => round($totalLiters, 2),
+            'total_subtotal_without_freight' => round($totalSubtotalWithoutFreight, 2),
+            'total_payable_to_supplier' => round($totalPayableToSupplier, 2),
+            'total_subtotal_with_freight' => round($totalSubtotalWithFreight, 2),
+            'total_selling_amount' => round($totalSellingAmount, 2),
+            'total_less_ewt' => round($totalLessEwt, 2),
+            'total_payables' => round($totalPayables, 2),
             'payment_amount' => $paymentAmount,
             'net_income' => $netIncome,
             'balance_short_over' => $balanceShortOver,
             'status' => $status,
-        ]);
+        ])->saveQuietly();
     }
 }
