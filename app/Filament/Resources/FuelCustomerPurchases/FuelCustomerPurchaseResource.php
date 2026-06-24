@@ -27,9 +27,9 @@ use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
-use Filament\Tables\Filters\SelectFilter;
 use UnitEnum;
 
 class FuelCustomerPurchaseResource extends Resource
@@ -272,27 +272,7 @@ class FuelCustomerPurchaseResource extends Resource
                                     ->suffix('L')
                                     ->default(0)
                                     ->required()
-                                    ->live()
-                                    ->helperText(function (Get $get): string {
-                                        $fuelProduct = strtoupper((string) $get('fuel_product'));
-
-                                        if (! $fuelProduct) {
-                                            return 'Select fuel product first.';
-                                        }
-
-                                        $salesOrderId = self::getRepeaterSalesOrderId($get);
-
-                                        if (! $salesOrderId) {
-                                            return 'Select Sales Order first.';
-                                        }
-
-                                        $stock = FuelSalesOrderItem::query()
-                                            ->where('fuel_sales_order_id', $salesOrderId)
-                                            ->where('fuel_product', $fuelProduct)
-                                            ->value('remaining_liters');
-
-                                        return 'Current remaining stock: ' . number_format((float) $stock, 2) . ' L';
-                                    }),
+                                    ->live(),
 
                                 TextInput::make('freight_alwin')
                                     ->label('Freight Alwin')
@@ -348,7 +328,7 @@ class FuelCustomerPurchaseResource extends Resource
                     ->columnSpanFull(),
 
                 Section::make('Deductions / Expenses')
-                    ->description('For record purposes only. Net Income is Payables minus Sub-total w/ Freight.')
+                    ->description('Net Income = Payables minus Sub-total w/ Freight minus Expenses.')
                     ->schema([
                         TextInput::make('garage')
                             ->label('Garage')
@@ -432,6 +412,12 @@ class FuelCustomerPurchaseResource extends Resource
                             ->label('Payables')
                             ->content(function (Get $get): string {
                                 return self::money(self::formTotals($get)['total_payables']);
+                            }),
+
+                        Placeholder::make('computed_total_expenses')
+                            ->label('Total Expenses')
+                            ->content(function (Get $get): string {
+                                return self::money(self::formTotals($get)['total_expenses']);
                             }),
 
                         Placeholder::make('computed_net_income')
@@ -598,6 +584,16 @@ class FuelCustomerPurchaseResource extends Resource
 
                         TextEntry::make('payment_amount')
                             ->label('Total Paid')
+                            ->formatStateUsing(fn ($state) => self::money($state)),
+
+                        TextEntry::make('total_expenses_display')
+                            ->label('Total Expenses')
+                            ->state(function (FuelCustomerPurchase $record): float {
+                                return (float) $record->garage
+                                    + (float) $record->agent_comm
+                                    + (float) $record->receiver
+                                    + (float) $record->others_amount;
+                            })
                             ->formatStateUsing(fn ($state) => self::money($state)),
 
                         TextEntry::make('net_income')
@@ -870,7 +866,18 @@ class FuelCustomerPurchaseResource extends Resource
 
     protected static function formTotals(Get $get): array
     {
-        $items = $get('items') ?? [];
+        return self::calculateTotalsFromData([
+            'items' => $get('items') ?? [],
+            'garage' => $get('garage') ?? 0,
+            'agent_comm' => $get('agent_comm') ?? 0,
+            'receiver' => $get('receiver') ?? 0,
+            'others_amount' => $get('others_amount') ?? 0,
+        ], self::getCurrentRecord());
+    }
+
+    public static function calculateTotalsFromData(array $data, ?FuelCustomerPurchase $record = null): array
+    {
+        $items = $data['items'] ?? [];
 
         $totalLiters = 0;
         $totalPayableToSupplier = 0;
@@ -914,13 +921,18 @@ class FuelCustomerPurchaseResource extends Resource
             }
         }
 
-        $record = self::getCurrentRecord();
-
         $paymentAmount = $record
             ? (float) $record->payments()->sum('amount')
             : 0;
 
-        $netIncome = $totalPayables - $totalPayableToSupplier;
+        $garage = (float) ($data['garage'] ?? 0);
+        $agentComm = (float) ($data['agent_comm'] ?? 0);
+        $receiver = (float) ($data['receiver'] ?? 0);
+        $othersAmount = (float) ($data['others_amount'] ?? 0);
+
+        $totalExpenses = $garage + $agentComm + $receiver + $othersAmount;
+
+        $netIncome = $totalPayables - $totalPayableToSupplier - $totalExpenses;
 
         $balanceShortOver = $paymentAmount - $totalPayables;
 
@@ -945,6 +957,7 @@ class FuelCustomerPurchaseResource extends Resource
             'total_less_ewt' => round($totalLessEwt, 2),
             'total_payables' => round($totalPayables, 2),
             'payment_amount' => round($paymentAmount, 2),
+            'total_expenses' => round($totalExpenses, 2),
             'net_income' => round($netIncome, 2),
             'balance_short_over' => round($balanceShortOver, 2),
             'status' => $status,
@@ -1028,20 +1041,15 @@ class FuelCustomerPurchaseResource extends Resource
                     ])
                     ->sortable(),
             ])
-
-                    ->filters([
-                                    SelectFilter::make('status')
-                                        ->label('Payment Status')
-                                        ->options([
-                                            'unpaid' => 'Unpaid',
-                                            'partial' => 'Partial',
-                                            'paid' => 'Paid',
-                                        ]),
-                                ])
-
-
-
-
+            ->filters([
+                SelectFilter::make('status')
+                    ->label('Payment Status')
+                    ->options([
+                        'unpaid' => 'Unpaid',
+                        'partial' => 'Partial',
+                        'paid' => 'Paid',
+                    ]),
+            ])
             ->defaultSort('date_ordered', 'desc')
             ->recordClasses(function (FuelCustomerPurchase $record): string {
                 return match (true) {
