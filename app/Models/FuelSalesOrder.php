@@ -48,12 +48,16 @@ class FuelSalesOrder extends Model
         return $this->hasMany(FuelPayment::class);
     }
 
+    public function customerPurchases(): HasMany
+    {
+        return $this->hasMany(FuelCustomerPurchase::class);
+    }
+
     public function recalculateTotals(): void
     {
         $totalLiters = (float) $this->items()->sum('quantity_liters');
         $grossAmount = (float) $this->items()->sum('line_total_amount');
 
-        // Total paid is computed from the separate fuel_payments table.
         $paidAmount = (float) $this->payments()->sum('amount');
 
         $ewtRate = (float) $this->ewt_rate;
@@ -62,7 +66,6 @@ class FuelSalesOrder extends Model
         $ewtAmount = round(($grossAmount / $vatDivisor) * $ewtRate, 2);
         $netAmount = round($grossAmount - $ewtAmount, 2);
 
-        // Negative balance means remaining payable.
         $balanceAmount = round($paidAmount - $netAmount, 2);
 
         $status = 'unpaid';
@@ -84,10 +87,29 @@ class FuelSalesOrder extends Model
             'balance_amount' => $balanceAmount,
             'status' => $status,
         ]);
+
+        $this->recalculateStocks();
     }
 
-    public function customerPurchases(): HasMany
+    public function recalculateStocks(): void
     {
-        return $this->hasMany(FuelCustomerPurchase::class);
+        $this->loadMissing('items');
+
+        foreach ($this->items as $item) {
+            $soldLiters = (float) FuelCustomerPurchaseItem::query()
+                ->where('fuel_product', strtoupper((string) $item->fuel_product))
+                ->whereHas('customerPurchase', function ($query) {
+                    $query->where('fuel_sales_order_id', $this->id);
+                })
+                ->sum('liters');
+
+            $originalLiters = (float) $item->quantity_liters;
+            $remainingLiters = round($originalLiters - $soldLiters, 2);
+
+            $item->updateQuietly([
+                'sold_liters' => round($soldLiters, 2),
+                'remaining_liters' => $remainingLiters,
+            ]);
+        }
     }
 }

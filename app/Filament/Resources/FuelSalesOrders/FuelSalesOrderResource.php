@@ -294,6 +294,17 @@ class FuelSalesOrderResource extends Resource
                     ->label('Total Liters')
                     ->formatStateUsing(fn($state) => number_format((float) $state, 2))
                     ->sortable(),
+                TextColumn::make('current_stock')
+                    ->label('Current Stock')
+                    ->state(function (FuelSalesOrder $record): string {
+                        return $record->items
+                            ->map(function ($item) {
+                                return $item->fuel_product . ': ' .
+                                    number_format((float) $item->remaining_liters, 2) . ' L';
+                            })
+                            ->implode("\n");
+                    })
+                    ->wrap(),
 
                 TextColumn::make('gross_amount')
                     ->label('Gross')

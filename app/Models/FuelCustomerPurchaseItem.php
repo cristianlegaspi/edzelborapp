@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
 
 class FuelCustomerPurchaseItem extends Model
 {
@@ -54,6 +55,8 @@ class FuelCustomerPurchaseItem extends Model
 
             $liters = (float) $item->liters;
 
+            self::validateAvailableStock($item, $liters);
+
             $freightAlwin = (float) $item->freight_alwin;
             $freightTanker = (float) $item->freight_tanker;
             $freight040 = (float) $item->freight_040;
@@ -83,12 +86,6 @@ class FuelCustomerPurchaseItem extends Model
 
             $payables = round($subtotalSellingPrice - $lessEwtRate, 2);
 
-            /*
-            |--------------------------------------------------------------------------
-            | Correct Item Net Income Formula
-            |--------------------------------------------------------------------------
-            | NET INCOME = PAYABLES - SUB-TOTAL W/ FREIGHT
-            */
             $netIncome = round($payables - $subtotalWithFreight, 2);
 
             $item->subtotal_without_freight = $subtotalWithoutFreight;
@@ -102,15 +99,65 @@ class FuelCustomerPurchaseItem extends Model
 
         static::saved(function (FuelCustomerPurchaseItem $item) {
             $item->customerPurchase?->recalculateTotals();
+            $item->customerPurchase?->salesOrder?->recalculateStocks();
         });
 
         static::deleted(function (FuelCustomerPurchaseItem $item) {
             $item->customerPurchase?->recalculateTotals();
+            $item->customerPurchase?->salesOrder?->recalculateStocks();
         });
 
         static::restored(function (FuelCustomerPurchaseItem $item) {
             $item->customerPurchase?->recalculateTotals();
+            $item->customerPurchase?->salesOrder?->recalculateStocks();
         });
+    }
+
+    protected static function validateAvailableStock(FuelCustomerPurchaseItem $item, float $liters): void
+    {
+        if ($liters <= 0) {
+            return;
+        }
+
+        $purchase = $item->customerPurchase;
+
+        if (! $purchase || ! $purchase->fuel_sales_order_id || ! $item->fuel_product) {
+            return;
+        }
+
+        $fuelProduct = strtoupper((string) $item->fuel_product);
+
+        $supplierItem = FuelSalesOrderItem::query()
+            ->where('fuel_sales_order_id', $purchase->fuel_sales_order_id)
+            ->where('fuel_product', $fuelProduct)
+            ->first();
+
+        if (! $supplierItem) {
+            throw ValidationException::withMessages([
+                'fuel_product' => "No available stock found for {$fuelProduct} in the selected supplier order.",
+            ]);
+        }
+
+        $alreadySoldQuery = FuelCustomerPurchaseItem::query()
+            ->where('fuel_product', $fuelProduct)
+            ->whereHas('customerPurchase', function ($query) use ($purchase) {
+                $query->where('fuel_sales_order_id', $purchase->fuel_sales_order_id);
+            });
+
+        if ($item->exists) {
+            $alreadySoldQuery->where('id', '!=', $item->id);
+        }
+
+        $alreadySold = (float) $alreadySoldQuery->sum('liters');
+
+        $originalStock = (float) $supplierItem->quantity_liters;
+        $availableStock = round($originalStock - $alreadySold, 2);
+
+        if ($liters > $availableStock) {
+            throw ValidationException::withMessages([
+                'liters' => "Not enough {$fuelProduct} stock. Available stock is only " . number_format($availableStock, 2) . " liters.",
+            ]);
+        }
     }
 
     public function customerPurchase(): BelongsTo

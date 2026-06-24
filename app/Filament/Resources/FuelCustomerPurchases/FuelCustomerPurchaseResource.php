@@ -5,6 +5,7 @@ namespace App\Filament\Resources\FuelCustomerPurchases;
 use App\Filament\Resources\FuelCustomerPurchases\Pages;
 use App\Models\FuelCustomerPurchase;
 use App\Models\FuelSalesOrder;
+use App\Models\FuelSalesOrderItem;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -18,6 +19,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
@@ -26,6 +28,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
 use UnitEnum;
 
 class FuelCustomerPurchaseResource extends Resource
@@ -52,21 +55,33 @@ class FuelCustomerPurchaseResource extends Resource
                     ->schema([
                         Select::make('fuel_sales_order_id')
                             ->label('Sales Order No.')
-                            ->options(function () {
+                            ->options(function (): array {
                                 return FuelSalesOrder::query()
+                                    ->with('items')
                                     ->orderByDesc('date_ordered')
                                     ->get()
-                                    ->mapWithKeys(function (FuelSalesOrder $order) {
+                                    ->mapWithKeys(function (FuelSalesOrder $order): array {
+                                        $remainingStock = (float) $order->items->sum('remaining_liters');
+
+                                        $stockLabel = $remainingStock > 0
+                                            ? number_format($remainingStock, 2) . ' L available'
+                                            : 'NO STOCK';
+
                                         return [
-                                            $order->id => $order->sales_order_no . ' - ' . $order->supplier,
+                                            $order->id => $order->sales_order_no . ' - ' . $order->supplier . ' | ' . $stockLabel,
                                         ];
-                                    });
+                                    })
+                                    ->all();
                             })
                             ->searchable()
                             ->preload()
                             ->live()
                             ->afterStateUpdated(function ($state, Set $set): void {
-                                $order = FuelSalesOrder::find($state);
+                                $order = FuelSalesOrder::query()
+                                    ->with('items')
+                                    ->find($state);
+
+                                $set('items', []);
 
                                 if (! $order) {
                                     $set('date_ordered', null);
@@ -77,10 +92,21 @@ class FuelCustomerPurchaseResource extends Resource
                                     return;
                                 }
 
+                                $order->recalculateStocks();
+                                $order->refresh();
+
                                 $set('date_ordered', $order->date_ordered?->format('Y-m-d'));
                                 $set('sales_order_no', $order->sales_order_no);
                                 $set('supplier', $order->supplier);
                                 $set('atl_date', $order->date_ordered?->format('Y-m-d'));
+
+                                if (! self::salesOrderHasCurrentStock((int) $order->id)) {
+                                    Notification::make()
+                                        ->title('No current stock')
+                                        ->body('This Sales Order currently has no remaining stock. Please select another SO or add supplier stock first.')
+                                        ->warning()
+                                        ->send();
+                                }
                             })
                             ->required(),
 
@@ -101,6 +127,38 @@ class FuelCustomerPurchaseResource extends Resource
                             ->dehydrated(),
                     ])
                     ->columns(4)
+                    ->columnSpanFull(),
+
+                Section::make('Current Stocks for Selected SO')
+                    ->schema([
+                        Placeholder::make('stock_warning')
+                            ->label('Stock Status')
+                            ->content(function (Get $get): HtmlString {
+                                $salesOrderId = $get('fuel_sales_order_id');
+
+                                if (! $salesOrderId) {
+                                    return new HtmlString('Please select a Sales Order first.');
+                                }
+
+                                if (! self::salesOrderHasCurrentStock((int) $salesOrderId)) {
+                                    return new HtmlString(
+                                        '<span style="color: #dc2626; font-weight: 700;">WARNING: No current stock available for this SO.</span>'
+                                    );
+                                }
+
+                                return new HtmlString(
+                                    '<span style="color: #16a34a; font-weight: 700;">This SO has available stock.</span>'
+                                );
+                            }),
+
+                        Placeholder::make('stock_summary')
+                            ->label('Remaining Stock per Fuel Product')
+                            ->content(function (Get $get): HtmlString {
+                                return self::stockSummaryHtml($get('fuel_sales_order_id'));
+                            }),
+                    ])
+                    ->columns(2)
+                    ->visible(fn (Get $get): bool => filled($get('fuel_sales_order_id')))
                     ->columnSpanFull(),
 
                 Section::make('Customer and Delivery Details')
@@ -137,6 +195,7 @@ class FuelCustomerPurchaseResource extends Resource
                     ->columnSpanFull(),
 
                 Section::make('Fuel Products')
+                    ->description('Only fuel products with remaining stock from the selected SO will appear in the dropdown.')
                     ->schema([
                         Repeater::make('items')
                             ->label('Fuel Products')
@@ -145,15 +204,66 @@ class FuelCustomerPurchaseResource extends Resource
                             ->schema([
                                 Select::make('fuel_product')
                                     ->label('Fuel Product')
-                                    ->options([
-                                        'DIESEL' => 'DIESEL',
-                                        'REGULAR' => 'REGULAR',
-                                        'PREMIUM' => 'PREMIUM',
-                                    ])
+                                    ->options(fn (Get $get): array => self::availableFuelProductOptions($get))
+                                    ->placeholder(function (Get $get): string {
+                                        $salesOrderId = self::getRepeaterSalesOrderId($get);
+
+                                        if (! $salesOrderId) {
+                                            return 'Select Sales Order first';
+                                        }
+
+                                        if (! self::salesOrderHasCurrentStock($salesOrderId) && blank($get('fuel_product'))) {
+                                            return 'No available fuel stock for this SO';
+                                        }
+
+                                        return 'Select Fuel Product';
+                                    })
+                                    ->helperText(function (Get $get): string {
+                                        $salesOrderId = self::getRepeaterSalesOrderId($get);
+
+                                        if (! $salesOrderId) {
+                                            return 'Please select a Sales Order first.';
+                                        }
+
+                                        if (! self::salesOrderHasCurrentStock($salesOrderId) && blank($get('fuel_product'))) {
+                                            return 'This SO has no remaining stock. You cannot select a fuel product.';
+                                        }
+
+                                        return 'Only products with remaining stock are shown.';
+                                    })
                                     ->searchable()
                                     ->native(false)
                                     ->required()
-                                    ->live(),
+                                    ->live()
+                                    ->disableOptionsWhenSelectedInSiblingRepeaterItems()
+                                    ->afterStateUpdated(function ($state, Get $get, Set $set): void {
+                                        if (! $state) {
+                                            return;
+                                        }
+
+                                        $salesOrderId = self::getRepeaterSalesOrderId($get);
+
+                                        if (! $salesOrderId) {
+                                            return;
+                                        }
+
+                                        $supplierItem = FuelSalesOrderItem::query()
+                                            ->where('fuel_sales_order_id', $salesOrderId)
+                                            ->where('fuel_product', strtoupper((string) $state))
+                                            ->first();
+
+                                        if (! $supplierItem) {
+                                            return;
+                                        }
+
+                                        $set('amount_per_liter', (float) $supplierItem->unit_price);
+                                    }),
+
+                                Placeholder::make('available_stock_preview')
+                                    ->label('Available Stock')
+                                    ->content(function (Get $get): HtmlString {
+                                        return self::selectedFuelStockHtml($get);
+                                    }),
 
                                 TextInput::make('liters')
                                     ->label('Liters')
@@ -161,7 +271,27 @@ class FuelCustomerPurchaseResource extends Resource
                                     ->suffix('L')
                                     ->default(0)
                                     ->required()
-                                    ->live(),
+                                    ->live()
+                                    ->helperText(function (Get $get): string {
+                                        $fuelProduct = strtoupper((string) $get('fuel_product'));
+
+                                        if (! $fuelProduct) {
+                                            return 'Select fuel product first.';
+                                        }
+
+                                        $salesOrderId = self::getRepeaterSalesOrderId($get);
+
+                                        if (! $salesOrderId) {
+                                            return 'Select Sales Order first.';
+                                        }
+
+                                        $stock = FuelSalesOrderItem::query()
+                                            ->where('fuel_sales_order_id', $salesOrderId)
+                                            ->where('fuel_product', $fuelProduct)
+                                            ->value('remaining_liters');
+
+                                        return 'Current remaining stock: ' . number_format((float) $stock, 2) . ' L';
+                                    }),
 
                                 TextInput::make('freight_alwin')
                                     ->label('Freight Alwin')
@@ -365,6 +495,14 @@ class FuelCustomerPurchaseResource extends Resource
                         TextEntry::make('atl_no')
                             ->label('ATL No.')
                             ->placeholder('-'),
+
+                        TextEntry::make('so_current_stock')
+                            ->label('Current SO Stock')
+                            ->state(function (FuelCustomerPurchase $record): string {
+                                return self::stockSummaryText($record->fuel_sales_order_id);
+                            })
+                            ->placeholder('-')
+                            ->columnSpanFull(),
                     ])
                     ->columns(4)
                     ->columnSpanFull(),
@@ -558,6 +696,177 @@ class FuelCustomerPurchaseResource extends Resource
         return FuelCustomerPurchase::find($record);
     }
 
+    protected static function getRepeaterSalesOrderId(Get $get): ?int
+    {
+        $salesOrderId = $get('../../fuel_sales_order_id');
+
+        if (! $salesOrderId) {
+            $salesOrderId = $get('fuel_sales_order_id');
+        }
+
+        return $salesOrderId ? (int) $salesOrderId : null;
+    }
+
+    protected static function salesOrderHasCurrentStock(?int $salesOrderId): bool
+    {
+        if (! $salesOrderId) {
+            return false;
+        }
+
+        return FuelSalesOrderItem::query()
+            ->where('fuel_sales_order_id', $salesOrderId)
+            ->where('remaining_liters', '>', 0)
+            ->exists();
+    }
+
+    protected static function availableFuelProductOptions(Get $get): array
+    {
+        $salesOrderId = self::getRepeaterSalesOrderId($get);
+
+        if (! $salesOrderId) {
+            return [];
+        }
+
+        $currentProduct = strtoupper((string) ($get('fuel_product') ?? ''));
+
+        return FuelSalesOrderItem::query()
+            ->where('fuel_sales_order_id', $salesOrderId)
+            ->where(function ($query) use ($currentProduct) {
+                $query->where('remaining_liters', '>', 0);
+
+                if ($currentProduct !== '') {
+                    $query->orWhere('fuel_product', $currentProduct);
+                }
+            })
+            ->orderBy('fuel_product')
+            ->get()
+            ->mapWithKeys(function (FuelSalesOrderItem $item): array {
+                $fuelProduct = strtoupper((string) $item->fuel_product);
+                $remaining = (float) $item->remaining_liters;
+
+                $label = $fuelProduct . ' - ' . number_format($remaining, 2) . ' L available';
+
+                if ($remaining <= 0) {
+                    $label = $fuelProduct . ' - NO CURRENT STOCK';
+                }
+
+                return [
+                    $fuelProduct => $label,
+                ];
+            })
+            ->all();
+    }
+
+    protected static function selectedFuelStockHtml(Get $get): HtmlString
+    {
+        $salesOrderId = self::getRepeaterSalesOrderId($get);
+        $fuelProduct = strtoupper((string) $get('fuel_product'));
+
+        if (! $salesOrderId) {
+            return new HtmlString('Select Sales Order first.');
+        }
+
+        if (! $fuelProduct) {
+            return new HtmlString('Select fuel product first.');
+        }
+
+        $item = FuelSalesOrderItem::query()
+            ->where('fuel_sales_order_id', $salesOrderId)
+            ->where('fuel_product', $fuelProduct)
+            ->first();
+
+        if (! $item) {
+            return new HtmlString(
+                '<span style="color: #dc2626; font-weight: 700;">No stock record found for this fuel product under the selected SO.</span>'
+            );
+        }
+
+        $remaining = (float) $item->remaining_liters;
+
+        $status = $remaining > 0
+            ? '<span style="color: #16a34a; font-weight: 700;">AVAILABLE</span>'
+            : '<span style="color: #dc2626; font-weight: 700;">NO CURRENT STOCK</span>';
+
+        return new HtmlString(
+            $status .
+            '<br>Original Stock: ' . number_format((float) $item->quantity_liters, 2) . ' L' .
+            '<br>Sold/Deducted: ' . number_format((float) $item->sold_liters, 2) . ' L' .
+            '<br>Remaining: ' . number_format($remaining, 2) . ' L'
+        );
+    }
+
+    protected static function stockSummaryHtml($salesOrderId): HtmlString
+    {
+        if (! $salesOrderId) {
+            return new HtmlString('Please select a Sales Order first.');
+        }
+
+        $items = FuelSalesOrderItem::query()
+            ->where('fuel_sales_order_id', $salesOrderId)
+            ->orderBy('fuel_product')
+            ->get();
+
+        if ($items->isEmpty()) {
+            return new HtmlString(
+                '<span style="color: #dc2626; font-weight: 700;">No fuel products found under this SO.</span>'
+            );
+        }
+
+        $totalRemaining = (float) $items->sum('remaining_liters');
+
+        $lines = $items
+            ->map(function (FuelSalesOrderItem $item): string {
+                $remaining = (float) $item->remaining_liters;
+
+                $color = $remaining > 0 ? '#16a34a' : '#dc2626';
+                $status = $remaining > 0 ? 'AVAILABLE' : 'NO STOCK';
+
+                return '<div style="margin-bottom: 4px;">'
+                    . '<strong>' . e((string) $item->fuel_product) . '</strong>'
+                    . ' — Remaining: <strong style="color: ' . $color . ';">'
+                    . number_format($remaining, 2) . ' L</strong>'
+                    . ' | Original: ' . number_format((float) $item->quantity_liters, 2) . ' L'
+                    . ' | Sold: ' . number_format((float) $item->sold_liters, 2) . ' L'
+                    . ' | <strong style="color: ' . $color . ';">' . $status . '</strong>'
+                    . '</div>';
+            })
+            ->implode('');
+
+        if ($totalRemaining <= 0) {
+            return new HtmlString(
+                '<div style="color: #dc2626; font-weight: 700; margin-bottom: 6px;">NO CURRENT STOCK AVAILABLE FOR THIS SO.</div>'
+                . $lines
+            );
+        }
+
+        return new HtmlString($lines);
+    }
+
+    protected static function stockSummaryText($salesOrderId): string
+    {
+        if (! $salesOrderId) {
+            return '-';
+        }
+
+        $items = FuelSalesOrderItem::query()
+            ->where('fuel_sales_order_id', $salesOrderId)
+            ->orderBy('fuel_product')
+            ->get();
+
+        if ($items->isEmpty()) {
+            return 'No fuel products found under this SO.';
+        }
+
+        return $items
+            ->map(function (FuelSalesOrderItem $item): string {
+                return $item->fuel_product
+                    . ': Remaining ' . number_format((float) $item->remaining_liters, 2) . ' L'
+                    . ' | Original ' . number_format((float) $item->quantity_liters, 2) . ' L'
+                    . ' | Sold ' . number_format((float) $item->sold_liters, 2) . ' L';
+            })
+            ->implode("\n");
+    }
+
     protected static function formTotals(Get $get): array
     {
         $items = $get('items') ?? [];
@@ -674,6 +983,14 @@ class FuelCustomerPurchaseResource extends Resource
                     ->label('Fuel Products')
                     ->badge(),
 
+                TextColumn::make('so_current_stock')
+                    ->label('SO Current Stock')
+                    ->state(function (FuelCustomerPurchase $record): string {
+                        return self::stockSummaryText($record->fuel_sales_order_id);
+                    })
+                    ->wrap()
+                    ->toggleable(),
+
                 TextColumn::make('total_liters')
                     ->label('Liters')
                     ->formatStateUsing(fn ($state) => number_format((float) $state, 2))
@@ -745,7 +1062,6 @@ class FuelCustomerPurchaseResource extends Resource
         return [
             'index' => Pages\ListFuelCustomerPurchases::route('/'),
             'create' => Pages\CreateFuelCustomerPurchase::route('/create'),
-            // 'view' => Pages\ViewFuelCustomerPurchase::route('/{record}'),
             'edit' => Pages\EditFuelCustomerPurchase::route('/{record}/edit'),
         ];
     }

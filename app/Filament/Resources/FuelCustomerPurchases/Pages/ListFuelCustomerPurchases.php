@@ -21,7 +21,8 @@ class ListFuelCustomerPurchases extends ListRecords
      protected function getHeaderWidgets(): array
     {
         return [
-            FuelCustomerPurchaseStatsOverview::class,
+            // FuelCustomerPurchaseStatsOverview::class,
+              \App\Filament\Widgets\FuelStockCardsWidget::class,
          
         ];
     }

@@ -63,6 +63,32 @@ class FuelCustomerPurchase extends Model
         'payment_amount' => 'decimal:2',
     ];
 
+    protected static function booted(): void
+    {
+        static::saved(function (FuelCustomerPurchase $purchase) {
+            $purchase->recalculateTotals();
+            $purchase->salesOrder?->recalculateStocks();
+
+            if ($purchase->wasChanged('fuel_sales_order_id')) {
+                $oldSalesOrderId = $purchase->getOriginal('fuel_sales_order_id');
+
+                if ($oldSalesOrderId && $oldSalesOrderId != $purchase->fuel_sales_order_id) {
+                    FuelSalesOrder::query()
+                        ->find($oldSalesOrderId)
+                        ?->recalculateStocks();
+                }
+            }
+        });
+
+        static::deleted(function (FuelCustomerPurchase $purchase) {
+            $purchase->salesOrder?->recalculateStocks();
+        });
+
+        static::restored(function (FuelCustomerPurchase $purchase) {
+            $purchase->salesOrder?->recalculateStocks();
+        });
+    }
+
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(FuelSalesOrder::class, 'fuel_sales_order_id');
@@ -90,28 +116,10 @@ class FuelCustomerPurchase extends Model
         $totalLessEwt = (float) $this->items()->sum('less_ewt_rate');
         $totalPayables = (float) $this->items()->sum('payables');
 
-        /*
-        |--------------------------------------------------------------------------
-        | Correct Net Income Formula
-        |--------------------------------------------------------------------------
-        | NET INCOME = PAYABLES - SUB-TOTAL W/ FREIGHT
-        */
         $netIncome = round($totalPayables - $totalSubtotalWithFreight, 2);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Customer payments are now separated.
-        |--------------------------------------------------------------------------
-        | payment_amount is now the computed total from fuel_customer_payments.
-        */
         $paymentAmount = (float) $this->payments()->sum('amount');
 
-        /*
-        |--------------------------------------------------------------------------
-        | Balance / Short / Over Formula
-        |--------------------------------------------------------------------------
-        | PAYMENT - PAYABLES
-        */
         $balanceShortOver = round($paymentAmount - $totalPayables, 2);
 
         $status = 'unpaid';

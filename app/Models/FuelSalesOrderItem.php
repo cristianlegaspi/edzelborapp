@@ -15,6 +15,8 @@ class FuelSalesOrderItem extends Model
         'fuel_product',
         'unit_price',
         'quantity_liters',
+        'sold_liters',
+        'remaining_liters',
         'line_total_amount',
         'remarks',
     ];
@@ -22,6 +24,8 @@ class FuelSalesOrderItem extends Model
     protected $casts = [
         'unit_price' => 'decimal:2',
         'quantity_liters' => 'decimal:2',
+        'sold_liters' => 'decimal:2',
+        'remaining_liters' => 'decimal:2',
         'line_total_amount' => 'decimal:2',
     ];
 
@@ -38,14 +42,17 @@ class FuelSalesOrderItem extends Model
 
         static::saved(function (FuelSalesOrderItem $item) {
             $item->salesOrder?->recalculateTotals();
+            $item->salesOrder?->recalculateStocks();
         });
 
         static::deleted(function (FuelSalesOrderItem $item) {
             $item->salesOrder?->recalculateTotals();
+            $item->salesOrder?->recalculateStocks();
         });
 
         static::restored(function (FuelSalesOrderItem $item) {
             $item->salesOrder?->recalculateTotals();
+            $item->salesOrder?->recalculateStocks();
         });
     }
 

@@ -62,8 +62,12 @@ class AdminPanelProvider extends PanelProvider
                 // \App\Filament\Widgets\FuelStocksChart::class,
                 // \App\Filament\Widgets\SupplierPayablesTable::class,
 
+                 \App\Filament\Widgets\FuelStockCardsWidget::class,
+
                 \App\Filament\Widgets\FuelCustomerPurchaseStatsOverview::class,
                 \App\Filament\Widgets\FuelSalesStatsOverview::class,
+               
+               
             ])
             ->renderHook(
                 'panels::head.end',
