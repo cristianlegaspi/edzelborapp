@@ -95,11 +95,13 @@ class FuelSalesOrder extends Model
     {
         $this->loadMissing('items');
 
-        foreach ($this->items as $item) {
+        foreach ($this->items()->whereNull('deleted_at')->get() as $item) {
             $soldLiters = (float) FuelCustomerPurchaseItem::query()
+                ->whereNull('deleted_at') // do not count soft-deleted customer purchase items
                 ->where('fuel_product', strtoupper((string) $item->fuel_product))
                 ->whereHas('customerPurchase', function ($query) {
-                    $query->where('fuel_sales_order_id', $this->id);
+                    $query->where('fuel_sales_order_id', $this->id)
+                        ->whereNull('deleted_at'); // do not count soft-deleted customer purchases
                 })
                 ->sum('liters');
 

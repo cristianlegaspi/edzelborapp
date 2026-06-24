@@ -21,6 +21,7 @@ class FuelStockCardsWidget extends BaseWidget
     protected function getStats(): array
     {
         $stocks = FuelSalesOrderItem::query()
+            ->whereNull('deleted_at') // do not count soft-deleted supplier items
             ->selectRaw('UPPER(TRIM(fuel_product)) as fuel_product_name')
             ->selectRaw('SUM(quantity_liters) as original_stock')
             ->selectRaw('SUM(sold_liters) as sold_stock')
@@ -32,7 +33,7 @@ class FuelStockCardsWidget extends BaseWidget
         if ($stocks->isEmpty()) {
             return [
                 Stat::make('No Fuel Stock', '0.00 L')
-                    ->description('No supplier fuel stocks found yet.')
+                    ->description('No active supplier fuel stocks found.')
                     ->color('danger'),
             ];
         }
