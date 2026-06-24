@@ -23,6 +23,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use UnitEnum;
+use Filament\Tables\Filters\SelectFilter;
 use App\Filament\Resources\FuelPayments\Schemas\FuelPaymentInfolist;
 
 class FuelPaymentResource extends Resource
@@ -312,6 +313,17 @@ class FuelPaymentResource extends Resource
                         'success' => 'paid',
                     ]),
             ])
+
+              ->filters([
+                SelectFilter::make('status')
+                    ->label('Payment Status')
+                    ->options([
+                        'unpaid' => 'Unpaid',
+                        'partial' => 'Partial',
+                        'paid' => 'Paid',
+                    ]),
+            ])
+            
             ->defaultSort('payment_date', 'desc')
             ->recordActions([
                 ViewAction::make(),

@@ -23,6 +23,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use UnitEnum;
+use Filament\Tables\Filters\SelectFilter;
 use App\Filament\Resources\FuelSalesOrders\Schemas\FuelSalesOrderInfolist;
 
 class FuelSalesOrderResource extends Resource
@@ -339,6 +340,16 @@ class FuelSalesOrderResource extends Resource
                         'success' => 'paid',
                     ])
                     ->sortable(),
+            ])
+
+             ->filters([
+                SelectFilter::make('status')
+                    ->label('Payment Status')
+                    ->options([
+                        'unpaid' => 'Unpaid',
+                        'partial' => 'Partial',
+                        'paid' => 'Paid',
+                    ]),
             ])
             ->defaultSort('date_ordered', 'desc')
             ->recordClasses(function (FuelSalesOrder $record): string {

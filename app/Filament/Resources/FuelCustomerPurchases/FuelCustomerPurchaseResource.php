@@ -29,6 +29,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
+use Filament\Tables\Filters\SelectFilter;
 use UnitEnum;
 
 class FuelCustomerPurchaseResource extends Resource
@@ -1027,6 +1028,20 @@ class FuelCustomerPurchaseResource extends Resource
                     ])
                     ->sortable(),
             ])
+
+                    ->filters([
+                                    SelectFilter::make('status')
+                                        ->label('Payment Status')
+                                        ->options([
+                                            'unpaid' => 'Unpaid',
+                                            'partial' => 'Partial',
+                                            'paid' => 'Paid',
+                                        ]),
+                                ])
+
+
+
+
             ->defaultSort('date_ordered', 'desc')
             ->recordClasses(function (FuelCustomerPurchase $record): string {
                 return match (true) {
