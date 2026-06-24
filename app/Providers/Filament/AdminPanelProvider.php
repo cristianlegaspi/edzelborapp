@@ -29,7 +29,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('EDZEBOR FUEL TRADING WEB APP')
+            ->brandName('EDZELVOR FUEL TRADING WEB APP')
             ->colors([
                 'primary' => Color::Amber,
             ])
