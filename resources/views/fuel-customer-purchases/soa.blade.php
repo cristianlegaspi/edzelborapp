@@ -220,7 +220,7 @@
         }
 
         .summary-label {
-            width: 88px;
+            width: 135px;
             color: var(--muted);
             font-weight: bold;
             text-transform: uppercase;
@@ -293,101 +293,6 @@
             background: #eef7ff;
         }
 
-        .final-area {
-            display: grid;
-            grid-template-columns: 1fr 265px;
-            gap: 8px;
-            align-items: start;
-            margin-top: 7px;
-        }
-
-        .remarks-card {
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            min-height: 76px;
-            padding: 7px;
-            background: var(--soft-bg);
-        }
-
-        .remarks-title {
-            font-size: 8px;
-            font-weight: 800;
-            color: var(--brand-blue);
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-
-        .remarks-text {
-            font-size: 7.5px;
-            color: var(--text);
-            line-height: 1.35;
-        }
-
-        .final-summary {
-            width: 100%;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-
-        .final-summary td {
-            font-size: 8px;
-            padding: 4px 6px;
-        }
-
-        .final-summary .label {
-            font-weight: 800;
-            text-align: right;
-            background: #f8fafc;
-            width: 58%;
-            color: var(--brand-blue-dark);
-            text-transform: uppercase;
-        }
-
-        .final-summary .value {
-            text-align: right;
-            white-space: nowrap;
-            font-weight: 800;
-            background: #ffffff;
-        }
-
-        .final-summary .net-income-row .label,
-        .final-summary .net-income-row .value {
-            background: var(--brand-blue);
-            color: #ffffff;
-            font-size: 8.5px;
-        }
-
-        .status {
-            display: inline-block;
-            padding: 2px 7px;
-            border-radius: 999px;
-            font-size: 7px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        .status-paid {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-partial {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .status-overpaid {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .status-unpaid {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
         .alert {
             border: 1px solid #991b1b;
             background: #fee2e2;
@@ -449,10 +354,7 @@
             .section-title,
             th,
             td,
-            .total-row td,
-            .final-summary .label,
-            .final-summary .value,
-            .remarks-card {
+            .total-row td {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -503,16 +405,6 @@
                 $purchase->loadMissing(['items', 'payments', 'salesOrder']);
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | Logo Setup
-            |--------------------------------------------------------------------------
-            | Put your logo here:
-            | public/images/logo.png
-            |
-            | Optional fallback:
-            | public/logo.png
-            */
             $logoPaths = [
                 public_path('images/logo.png'),
                 public_path('logo.png'),
@@ -545,28 +437,21 @@
                     return '-';
                 }
 
+                return Carbon::parse($date)->format('d-M');
+            };
+
+            $formatFullDate = function ($date) {
+                if (! $date) {
+                    return '-';
+                }
+
                 return Carbon::parse($date)->format('m/d/Y');
             };
 
             $money = fn ($amount) => '₱ ' . number_format((float) $amount, 2);
             $number = fn ($amount) => number_format((float) $amount, 2);
 
-            $totalLiters = (float) ($purchase?->total_liters ?? $items->sum('liters'));
-
-            $subtotalWithFreight = (float) (
-                $purchase?->total_subtotal_with_freight
-                ?? $items->sum('subtotal_with_freight')
-            );
-
-            $totalSellingAmount = (float) (
-                $purchase?->total_selling_amount
-                ?? $items->sum('subtotal_selling_price')
-            );
-
-            $totalLessEwt = (float) (
-                $purchase?->total_less_ewt
-                ?? $items->sum('less_ewt_rate')
-            );
+            $totalNoPurchaseOrder = (int) ($purchase?->total_no_purchase_order ?? 1);
 
             $totalPayables = (float) (
                 $purchase?->total_payables
@@ -578,42 +463,10 @@
                 ?? $payments->sum('amount')
             );
 
-            /*
-            |--------------------------------------------------------------------------
-            | Correct Formula
-            |--------------------------------------------------------------------------
-            | NET INCOME = PAYABLES - SUB-TOTAL W/ FREIGHT
-            */
-            $netIncome = (float) (
-                $purchase?->net_income
-                ?? ($totalPayables - $subtotalWithFreight)
+            $remainingBalance = (float) (
+                $purchase?->remaining_balance
+                ?? max($totalPayables - $totalPaid, 0)
             );
-
-            /*
-            |--------------------------------------------------------------------------
-            | Balance / Short / Over
-            |--------------------------------------------------------------------------
-            | PAYMENT - PAYABLES
-            */
-            $balanceShortOver = (float) (
-                $purchase?->balance_short_over
-                ?? ($totalPaid - $totalPayables)
-            );
-
-            $status = strtolower((string) ($purchase?->status ?? 'unpaid'));
-
-            $statusClass = match ($status) {
-                'paid' => 'status-paid',
-                'partial' => 'status-partial',
-                'overpaid' => 'status-overpaid',
-                default => 'status-unpaid',
-            };
-
-            $balanceLabel = $balanceShortOver < 0
-                ? 'Remaining Balance'
-                : ($balanceShortOver > 0 ? 'Overpayment' : 'Balance');
-
-            $balanceDisplayAmount = abs($balanceShortOver);
         @endphp
 
         @if (! $purchase)
@@ -645,13 +498,13 @@
                 </div>
             </div>
 
-            {{-- CUSTOMER SUMMARY --}}
+            {{-- REQUIRED SUMMARY ONLY --}}
             <div class="summary-card">
-                <div class="summary-header">Customer and Order Information</div>
+                <div class="summary-header">Customer Statement Summary</div>
 
                 <table class="summary-table">
                     <tr>
-                        <td class="summary-label">Customer</td>
+                        <td class="summary-label">Customer Name</td>
                         <td class="summary-value">{{ $purchase->customer ?? '-' }}</td>
 
                         <td class="summary-label">Date SOA</td>
@@ -659,89 +512,70 @@
                     </tr>
 
                     <tr>
-                        <td class="summary-label">Supplier</td>
-                        <td class="summary-value">{{ $purchase->supplier ?? '-' }}</td>
+                        <td class="summary-label">Total No. of Purchase Order</td>
+                        <td class="summary-value">{{ number_format($totalNoPurchaseOrder) }}</td>
 
-                        <td class="summary-label">SO No.</td>
-                        <td class="summary-value">{{ $purchase->sales_order_no ?? '-' }}</td>
+                        <td class="summary-label">Total Amount Payables</td>
+                        <td class="summary-value">{{ $money($totalPayables) }}</td>
                     </tr>
 
                     <tr>
-                        <td class="summary-label">Date Ordered</td>
-                        <td class="summary-value">{{ $formatDate($purchase->date_ordered) }}</td>
+                        <td class="summary-label">Total Paid Payments</td>
+                        <td class="summary-value">{{ $money($totalPaid) }}</td>
 
-                        <td class="summary-label">Order Details</td>
-                        <td class="summary-value">{{ $purchase->order_no_details ?? '-' }}</td>
-                    </tr>
-
-                    <tr>
-                        <td class="summary-label">ATL Date / No.</td>
-                        <td class="summary-value">
-                            {{ $formatDate($purchase->atl_date) }} / {{ $purchase->atl_no ?? '-' }}
-                        </td>
-
-                        <td class="summary-label">Status</td>
-                        <td class="summary-value">
-                            <span class="status {{ $statusClass }}">
-                                {{ strtoupper($status) }}
-                            </span>
-                        </td>
+                        <td class="summary-label">Remaining Balance</td>
+                        <td class="summary-value">{{ $money($remainingBalance) }}</td>
                     </tr>
                 </table>
             </div>
 
             {{-- PURCHASE DETAILS --}}
-            <div class="section-title">Purchase and Payables Summary</div>
+            <div class="section-title">Purchase Details</div>
 
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 13%;">Product</th>
-                        <th style="width: 9%;">Liters</th>
-                        <th style="width: 11%;">Amount / Liter</th>
-                        <th style="width: 9%;">Freight / L</th>
-                        <th style="width: 13%;">Sub-total w/ Freight</th>
-                        <th style="width: 11%;">Selling Price</th>
-                        <th style="width: 13%;">Gross Selling</th>
-                        <th style="width: 9%;">EWT</th>
-                        <th style="width: 12%;">Payables</th>
+                        <th style="width: 10%;">Sales Order No.</th>
+                        <th style="width: 9%;">ATL Date</th>
+                        <th style="width: 12%;">Order No.</th>
+                        <th style="width: 8%;">ATL No.</th>
+                        <th style="width: 13%;">Fuel Product</th>
+                        <th style="width: 12%;">Liters</th>
+                        <th style="width: 12%;">Selling Price</th>
+                        <th style="width: 12%;">EWT</th>
+                        <th style="width: 12%;">Total Amount Payables</th>
                     </tr>
                 </thead>
 
                 <tbody>
-                    @forelse ($items as $item)
-                        @php
-                            $freightPerLiter =
-                                (float) ($item->freight_alwin ?? 0)
-                                + (float) ($item->freight_tanker ?? 0)
-                                + (float) ($item->freight_040 ?? 0);
-                        @endphp
-
+                    @forelse ($items as $index => $item)
                         <tr>
-                            <td class="center">{{ $item->fuel_product ?? '-' }}</td>
+                            <td class="center">
+                                {{ $index === 0 ? ($purchase->sales_order_no ?? '-') : '' }}
+                            </td>
+
+                            <td class="center">
+                                {{ $index === 0 ? $formatDate($purchase->atl_date) : '' }}
+                            </td>
+
+                            <td class="center">
+                                {{ $index === 0 ? ($purchase->order_no_details ?? '-') : '' }}
+                            </td>
+
+                            <td class="center">
+                                {{ $index === 0 ? ($purchase->atl_no ?? '-') : '' }}
+                            </td>
+
+                            <td class="center">
+                                {{ $item->fuel_product ?? '-' }}
+                            </td>
 
                             <td class="amount">
                                 {{ $number($item->liters ?? 0) }}
                             </td>
 
                             <td class="amount">
-                                {{ $money($item->amount_per_liter ?? 0) }}
-                            </td>
-
-                            <td class="amount">
-                                {{ number_format($freightPerLiter, 3) }}
-                            </td>
-
-                            <td class="amount">
-                                {{ $money($item->subtotal_with_freight ?? 0) }}
-                            </td>
-
-                            <td class="amount">
                                 {{ $money($item->selling_price ?? 0) }}
-                            </td>
-
-                            <td class="amount">
-                                {{ $money($item->subtotal_selling_price ?? 0) }}
                             </td>
 
                             <td class="amount">
@@ -763,29 +597,27 @@
 
                 <tfoot>
                     <tr class="total-row">
-                        <td class="amount">Total</td>
-                        <td class="amount">{{ $number($totalLiters) }}</td>
-                        <td colspan="2"></td>
-                        <td class="amount">{{ $money($subtotalWithFreight) }}</td>
+                        <td colspan="5" class="amount">Total</td>
+                        <td class="amount">{{ $number($items->sum('liters')) }}</td>
                         <td></td>
-                        <td class="amount">{{ $money($totalSellingAmount) }}</td>
-                        <td class="amount">{{ $money($totalLessEwt) }}</td>
+                        <td class="amount">{{ $money($items->sum('less_ewt_rate')) }}</td>
                         <td class="amount">{{ $money($totalPayables) }}</td>
                     </tr>
                 </tfoot>
             </table>
 
-            {{-- PAYMENT HISTORY --}}
+            {{-- PAYMENT HISTORY AT THE BOTTOM --}}
             <div class="section-title">Payment History</div>
 
             <table class="payment-table">
                 <thead>
                     <tr>
-                        <th style="width: 23%;">Tracking No.</th>
-                        <th style="width: 14%;">Date</th>
-                        <th style="width: 18%;">Amount Paid</th>
-                        <th style="width: 18%;">Method</th>
-                        <th style="width: 27%;">Reference / Remarks</th>
+                        <th style="width: 13%;">Date</th>
+                        <th style="width: 15%;">Amount Paid</th>
+                        <th style="width: 15%;">Bank Name</th>
+                        <th style="width: 15%;">Cheque No.</th>
+                        <th style="width: 22%;">Transaction / Reference No.</th>
+                        <th style="width: 20%;">Remarks</th>
                     </tr>
                 </thead>
 
@@ -793,11 +625,7 @@
                     @forelse ($payments as $payment)
                         <tr>
                             <td class="center">
-                                {{ $payment->customer_payment_tracking_no ?? '-' }}
-                            </td>
-
-                            <td class="center">
-                                {{ $formatDate($payment->payment_date) }}
+                                {{ $formatFullDate($payment->payment_date) }}
                             </td>
 
                             <td class="amount">
@@ -805,19 +633,24 @@
                             </td>
 
                             <td class="center">
-                                {{ $payment->payment_method ?? '-' }}
+                                {{ $payment->bank_name ?? $payment->bank ?? '-' }}
+                            </td>
+
+                            <td class="center">
+                                {{ $payment->cheque_no ?? $payment->check_no ?? '-' }}
+                            </td>
+
+                            <td class="center">
+                                {{ $payment->transaction_reference_no ?? $payment->transaction_no ?? $payment->reference_no ?? '-' }}
                             </td>
 
                             <td>
-                                {{ $payment->reference_no ?? '-' }}
-                                @if (! empty($payment->remarks))
-                                    - {{ $payment->remarks }}
-                                @endif
+                                {{ $payment->remarks ?? '-' }}
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="center">
+                            <td colspan="6" class="center">
                                 No payment history found.
                             </td>
                         </tr>
@@ -826,54 +659,12 @@
 
                 <tfoot>
                     <tr class="total-row">
-                        <td colspan="2" class="amount">Total Paid</td>
+                        <td class="amount">Total Paid</td>
                         <td class="amount">{{ $money($totalPaid) }}</td>
-                        <td colspan="2"></td>
+                        <td colspan="4"></td>
                     </tr>
                 </tfoot>
             </table>
-
-            {{-- FINAL SUMMARY --}}
-            <div class="final-area">
-                <div class="remarks-card">
-                    <div class="remarks-title">Remarks</div>
-
-                    <div class="remarks-text">
-                        @if (! empty($purchase->remarks))
-                            {{ $purchase->remarks }}
-                        @else
-                            This statement reflects the recorded purchase, payables, and payment history for the selected customer transaction.
-                        @endif
-                    </div>
-                </div>
-
-                <table class="final-summary">
-                    <tr>
-                        <td class="label">Sub-total w/ Freight</td>
-                        <td class="value">{{ $money($subtotalWithFreight) }}</td>
-                    </tr>
-
-                    <tr>
-                        <td class="label">Payables</td>
-                        <td class="value">{{ $money($totalPayables) }}</td>
-                    </tr>
-
-                    <tr>
-                        <td class="label">Total Paid</td>
-                        <td class="value">{{ $money($totalPaid) }}</td>
-                    </tr>
-
-                    <tr>
-                        <td class="label">{{ $balanceLabel }}</td>
-                        <td class="value">{{ $money($balanceDisplayAmount) }}</td>
-                    </tr>
-
-                    <tr class="net-income-row">
-                        <td class="label">Net Income</td>
-                        <td class="value">{{ $money($netIncome) }}</td>
-                    </tr>
-                </table>
-            </div>
 
             <div class="footer-note">
                 <span>Generated on {{ now()->format('m/d/Y h:i A') }}</span>

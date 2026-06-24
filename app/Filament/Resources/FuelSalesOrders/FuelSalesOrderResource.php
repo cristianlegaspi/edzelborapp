@@ -233,35 +233,21 @@ class FuelSalesOrderResource extends Resource
         ];
     }
 
-    protected static function generateSalesOrderNo(): string
-    {
-        $prefix = 'SO-' . now()->format('Ymd') . '-';
+   protected static function generateSalesOrderNo(): string
+{
+    $prefix = 'SO-' . now()->format('Ymd') . '-';
 
-        $lastSalesOrderNo = FuelSalesOrder::query()
-            ->where('sales_order_no', 'like', $prefix . '%')
-            ->orderByDesc('id')
-            ->value('sales_order_no');
-
-        $nextNumber = 1;
-
-        if (
-            $lastSalesOrderNo &&
-            preg_match('/^' . preg_quote($prefix, '/') . '(\d+)$/', $lastSalesOrderNo, $matches)
-        ) {
-            $nextNumber = ((int) $matches[1]) + 1;
-        }
-
-        do {
-            $salesOrderNo = $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
-            $nextNumber++;
-        } while (
-            FuelSalesOrder::query()
+    do {
+        // Example result: SO-20260624-58392741
+        $salesOrderNo = $prefix . random_int(10000000, 99999999);
+    } while (
+        FuelSalesOrder::withTrashed()
             ->where('sales_order_no', $salesOrderNo)
             ->exists()
-        );
+    );
 
-        return $salesOrderNo;
-    }
+    return $salesOrderNo;
+}
 
     protected static function money(float|int|string|null $amount): string
     {

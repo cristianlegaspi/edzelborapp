@@ -52,9 +52,11 @@ class FuelCustomerPaymentResource extends Resource
                     ->schema([
                         TextInput::make('customer_payment_tracking_no')
                             ->label('Customer Payment Tracking No.')
-                            ->placeholder('Auto-generated after saving')
+                            ->default(fn(): string => self::generateCustomerPaymentTrackingNo())
                             ->readOnly()
-                            ->dehydrated()
+                            ->dehydrated(true)
+                            ->required()
+                            ->unique(ignoreRecord: true)
                             ->maxLength(255),
                     ])
                     ->columns(1)
@@ -259,7 +261,7 @@ class FuelCustomerPaymentResource extends Resource
 
                         TextEntry::make('amount')
                             ->label('Amount Paid')
-                            ->formatStateUsing(fn ($state) => self::money($state)),
+                            ->formatStateUsing(fn($state) => self::money($state)),
 
                         TextEntry::make('payment_method')
                             ->label('Payment Method')
@@ -281,24 +283,24 @@ class FuelCustomerPaymentResource extends Resource
                     ->schema([
                         TextEntry::make('customerPurchase.total_payables')
                             ->label('Payables')
-                            ->formatStateUsing(fn ($state) => self::money($state)),
+                            ->formatStateUsing(fn($state) => self::money($state)),
 
                         TextEntry::make('customerPurchase.payment_amount')
                             ->label('Total Paid')
-                            ->formatStateUsing(fn ($state) => self::money($state)),
+                            ->formatStateUsing(fn($state) => self::money($state)),
 
                         TextEntry::make('customerPurchase.balance_short_over')
                             ->label('Balance / Short / Over')
-                            ->formatStateUsing(fn ($state) => self::money($state)),
+                            ->formatStateUsing(fn($state) => self::money($state)),
 
                         TextEntry::make('customerPurchase.net_income')
                             ->label('Net Income')
-                            ->formatStateUsing(fn ($state) => self::money($state)),
+                            ->formatStateUsing(fn($state) => self::money($state)),
 
                         TextEntry::make('customerPurchase.status')
                             ->label('Status')
                             ->badge()
-                            ->color(fn (?string $state): string => match ($state) {
+                            ->color(fn(?string $state): string => match ($state) {
                                 'paid' => 'success',
                                 'partial' => 'warning',
                                 'overpaid' => 'info',
@@ -349,6 +351,22 @@ class FuelCustomerPaymentResource extends Resource
     {
         return '₱ ' . number_format((float) $amount, 2);
     }
+    protected static function generateCustomerPaymentTrackingNo(): string
+    {
+        $prefix = 'CP-' . now()->format('Ymd') . '-';
+
+        do {
+            // Example: CP-20260624-58392741
+            $trackingNo = $prefix . random_int(10000000, 99999999);
+        } while (
+            FuelCustomerPayment::withTrashed()
+            ->where('customer_payment_tracking_no', $trackingNo)
+            ->exists()
+        );
+
+        return $trackingNo;
+    }
+
 
     public static function table(Table $table): Table
     {
@@ -382,7 +400,7 @@ class FuelCustomerPaymentResource extends Resource
 
                 TextColumn::make('amount')
                     ->label('Amount Paid')
-                    ->formatStateUsing(fn ($state) => self::money($state))
+                    ->formatStateUsing(fn($state) => self::money($state))
                     ->sortable(),
 
                 TextColumn::make('payment_method')
@@ -396,15 +414,15 @@ class FuelCustomerPaymentResource extends Resource
 
                 TextColumn::make('customerPurchase.total_payables')
                     ->label('Payables')
-                    ->formatStateUsing(fn ($state) => self::money($state)),
+                    ->formatStateUsing(fn($state) => self::money($state)),
 
                 TextColumn::make('customerPurchase.payment_amount')
                     ->label('Total Paid')
-                    ->formatStateUsing(fn ($state) => self::money($state)),
+                    ->formatStateUsing(fn($state) => self::money($state)),
 
                 TextColumn::make('customerPurchase.balance_short_over')
                     ->label('Balance / Short / Over')
-                    ->formatStateUsing(fn ($state) => self::money($state)),
+                    ->formatStateUsing(fn($state) => self::money($state)),
 
                 TextColumn::make('customerPurchase.status')
                     ->label('Status')
@@ -416,7 +434,7 @@ class FuelCustomerPaymentResource extends Resource
                         'info' => 'overpaid',
                     ]),
             ])
-              ->filters([
+            ->filters([
                 SelectFilter::make('status')
                     ->label('Payment Status')
                     ->options([
