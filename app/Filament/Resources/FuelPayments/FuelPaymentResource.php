@@ -25,6 +25,7 @@ use Filament\Tables\Table;
 use UnitEnum;
 use Filament\Tables\Filters\SelectFilter;
 use App\Filament\Resources\FuelPayments\Schemas\FuelPaymentInfolist;
+use Illuminate\Validation\Rules\Unique;
 
 class FuelPaymentResource extends Resource
 {
@@ -116,8 +117,17 @@ class FuelPaymentResource extends Resource
                             ->searchable()
                             ->native(false),
 
-                           TextInput::make('reference_no')
-                            ->label('Reference No.'),
+                          TextInput::make('reference_no')
+                            ->label('Reference No.')
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: fn (Unique $rule) => $rule->whereNull('deleted_at'),
+                            )
+                            ->validationMessages([
+                                'unique' => 'Oops, the payment reference is already used.',
+                            ])
+                            ->helperText('Use this for check no., transaction no., or bank reference no.')
+                            ->maxLength(255),
 
                         TextInput::make('remarks')
                             ->label('Remarks')

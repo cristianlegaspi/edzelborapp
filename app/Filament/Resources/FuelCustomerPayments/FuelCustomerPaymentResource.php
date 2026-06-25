@@ -25,6 +25,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Tables\Filters\SelectFilter;
 use UnitEnum;
+use Illuminate\Validation\Rules\Unique;
 
 class FuelCustomerPaymentResource extends Resource
 {
@@ -120,8 +121,15 @@ class FuelCustomerPaymentResource extends Resource
                             ->native(false)
                             ->required(),
 
-                        TextInput::make('reference_no')
+                      TextInput::make('reference_no')
                             ->label('Reference No.')
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: fn (Unique $rule) => $rule->whereNull('deleted_at'),
+                            )
+                            ->validationMessages([
+                                'unique' => 'Oops, the payment reference is already used.',
+                            ])
                             ->helperText('Use this for check no., transaction no., or bank reference no.')
                             ->maxLength(255),
 
