@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Models\FuelCustomerPurchase;
 use App\Http\Controllers\FuelSoaPrintController;
+use App\Http\Controllers\FuelCustomerPurchaseSummaryReportController;
 
 Route::get('/', function () {
     return redirect('/admin/login');
@@ -26,3 +27,9 @@ Route::get('/fuel-customer-purchases/{record}/soa', function (FuelCustomerPurcha
         'purchase' => $record,
     ]);
 })->name('fuel-customer-purchases.soa');
+
+
+Route::get(
+    '/fuel-customer-purchases/print-summary-report',
+    FuelCustomerPurchaseSummaryReportController::class
+)->name('fuel-customer-purchases.print-summary-report');
