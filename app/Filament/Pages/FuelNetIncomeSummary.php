@@ -21,15 +21,9 @@ class FuelNetIncomeSummary extends Page
 
     protected static ?int $navigationSort = 50;
 
-    protected string $view = 'filament.pages.fuel-net-income-summary';
+   protected string $view = 'filament.pages.fuel-net-income-summary';
 
     public int $year;
-
-    public string $search = '';
-
-    public int $perPage = 10;
-
-    public int $page = 1;
 
     public array $availableYears = [];
 
@@ -41,6 +35,12 @@ class FuelNetIncomeSummary extends Page
 
     public float $grandBalance = 0;
 
+    public string $search = '';
+
+    public int $perPage = 10;
+
+    public int $page = 1;
+
     public function mount(): void
     {
         $this->year = (int) now()->year;
@@ -49,9 +49,11 @@ class FuelNetIncomeSummary extends Page
         $this->loadSummary();
     }
 
-    public function updatedYear(): void
+    public function updatedYear($value): void
     {
+        $this->year = (int) $value;
         $this->page = 1;
+
         $this->loadSummary();
     }
 
@@ -60,8 +62,9 @@ class FuelNetIncomeSummary extends Page
         $this->page = 1;
     }
 
-    public function updatedPerPage(): void
+    public function updatedPerPage($value): void
     {
+        $this->perPage = (int) $value;
         $this->page = 1;
     }
 
@@ -137,7 +140,7 @@ class FuelNetIncomeSummary extends Page
                     continue;
                 }
 
-                $month = (int) $purchase->date_ordered->format('n');
+                $month = (int) Carbon::parse($purchase->date_ordered)->format('n');
 
                 $netIncome = round((float) $purchase->net_income, 2);
                 $balance = round((float) $purchase->balance_short_over, 2);
@@ -152,13 +155,8 @@ class FuelNetIncomeSummary extends Page
                 $this->grandBalance += $balance;
             }
 
-            $totalNetIncome = array_sum(
-                array_map(fn ($month) => (float) $month['net_income'], $months)
-            );
-
-            $totalBalance = array_sum(
-                array_map(fn ($month) => (float) $month['balance'], $months)
-            );
+            $totalNetIncome = array_sum(array_column($months, 'net_income'));
+            $totalBalance = array_sum(array_column($months, 'balance'));
 
             $rows[] = [
                 'customer' => $customer,
@@ -177,60 +175,85 @@ class FuelNetIncomeSummary extends Page
         $this->grandBalance = round($this->grandBalance, 2);
     }
 
-    public function getFilteredRowsProperty(): array
+    public function filteredRows(): array
     {
         $search = strtolower(trim($this->search));
 
-        if ($search === '') {
-            return $this->summaryRows;
-        }
-
         return collect($this->summaryRows)
-            ->filter(fn (array $row) => str_contains(strtolower($row['customer']), $search))
+            ->when($search !== '', function ($rows) use ($search) {
+                return $rows->filter(function ($row) use ($search) {
+                    return str_contains(strtolower($row['customer']), $search);
+                });
+            })
             ->values()
             ->toArray();
     }
 
-    public function getTotalResultsProperty(): int
+    public function paginatedRows(): array
     {
-        return count($this->filteredRows);
-    }
+        $totalPages = $this->totalPages();
 
-    public function getTotalPagesProperty(): int
-    {
-        return max(1, (int) ceil($this->totalResults / $this->perPage));
-    }
-
-    public function getPaginatedRowsProperty(): array
-    {
-        if ($this->page > $this->totalPages) {
-            $this->page = $this->totalPages;
+        if ($this->page > $totalPages) {
+            $this->page = $totalPages;
         }
 
-        return collect($this->filteredRows)
+        return collect($this->filteredRows())
             ->forPage($this->page, $this->perPage)
             ->values()
             ->toArray();
     }
 
-    public function setPageNumber(int $page): void
+    public function totalResults(): int
     {
-        $this->page = max(1, min($page, $this->totalPages));
+        return count($this->filteredRows());
+    }
+
+    public function totalPages(): int
+    {
+        return max(1, (int) ceil($this->totalResults() / $this->perPage));
+    }
+
+    public function showingFrom(): int
+    {
+        if ($this->totalResults() === 0) {
+            return 0;
+        }
+
+        return (($this->page - 1) * $this->perPage) + 1;
+    }
+
+    public function showingTo(): int
+    {
+        return min($this->page * $this->perPage, $this->totalResults());
+    }
+
+    public function pageNumbers(): array
+    {
+        return range(1, $this->totalPages());
     }
 
     public function previousPage(): void
     {
-        $this->setPageNumber($this->page - 1);
+        if ($this->page > 1) {
+            $this->page--;
+        }
     }
 
     public function nextPage(): void
     {
-        $this->setPageNumber($this->page + 1);
+        if ($this->page < $this->totalPages()) {
+            $this->page++;
+        }
     }
 
-    public function monthShortName(int $month): string
+    public function gotoPage(int $page): void
     {
-        return Carbon::create()->month($month)->format('M');
+        $this->page = max(1, min($page, $this->totalPages()));
+    }
+
+    public function monthName(int $month): string
+    {
+        return Carbon::createFromDate(2000, $month, 1)->format('M');
     }
 
     public function money(float|int|string|null $amount): string
@@ -238,12 +261,18 @@ class FuelNetIncomeSummary extends Page
         return '₱' . number_format((float) $amount, 2);
     }
 
-    public function displayAmount(float|int|string|null $amount): string
+    public function amountClass(float|int|string|null $amount): string
     {
         $amount = round((float) $amount, 2);
 
-        return $amount == 0.0
-            ? '₱0.00'
-            : '₱' . number_format($amount, 2);
+        if ($amount > 0) {
+            return 'fuel-amount-positive';
+        }
+
+        if ($amount < 0) {
+            return 'fuel-amount-negative';
+        }
+
+        return 'fuel-amount-zero';
     }
 }
