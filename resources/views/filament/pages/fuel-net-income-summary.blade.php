@@ -3,13 +3,15 @@
         $rows = $this->paginatedRows();
         $totalResults = $this->totalResults();
         $totalPages = $this->totalPages();
+
+        $availableCustomersList = $availableCustomers ?? $this->availableCustomers ?? [];
     @endphp
 
     <div class="fuel-net-income-page">
         <div class="fuel-page-header">
             <div>
                 <h2 class="fuel-page-title">
-                    Customer Net Income Summary Report 
+                    Customer Net Income Summary Report
                 </h2>
 
                 <p class="fuel-page-description">
@@ -18,6 +20,29 @@
             </div>
 
             <div class="fuel-page-actions">
+                <form
+                    method="GET"
+                    action="{{ route('fuel-customer-net-income.print-summary') }}"
+                    target="_blank"
+                    class="fuel-print-form"
+                >
+                    <input type="hidden" name="year" value="{{ $year }}">
+
+                    <select name="customer" class="fuel-select fuel-print-customer-select">
+                        <option value="all">All Customers</option>
+
+                        @foreach ($availableCustomersList as $customerValue => $customerLabel)
+                            <option value="{{ $customerValue }}">
+                                {{ $customerLabel }}
+                            </option>
+                        @endforeach
+                    </select>
+
+                    <button type="submit" class="fuel-print-button">
+                        Print Summary Report
+                    </button>
+                </form>
+
                 <span class="fuel-year-badge">
                     Settings: Year {{ $year }}
                 </span>
@@ -215,6 +240,34 @@
             justify-content: flex-end;
             gap: 0.5rem;
             flex-wrap: wrap;
+        }
+
+        .fuel-print-form {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .fuel-print-customer-select {
+            min-width: 14rem;
+        }
+
+        .fuel-print-button {
+            height: 2.25rem;
+            border: none;
+            border-radius: 0.5rem;
+            background: #10b981;
+            color: #ffffff;
+            padding: 0 0.875rem;
+            font-size: 0.875rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .fuel-print-button:hover {
+            background: #059669;
         }
 
         .fuel-year-badge {
@@ -433,6 +486,15 @@
             border-color: rgba(255, 255, 255, 0.1);
             background: #27272a;
             color: #ffffff;
+        }
+
+        .dark .fuel-print-button {
+            background: #10b981;
+            color: #ffffff;
+        }
+
+        .dark .fuel-print-button:hover {
+            background: #059669;
         }
 
         .dark .fuel-table th {

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Models\FuelCustomerPurchase;
 use App\Http\Controllers\FuelSoaPrintController;
 use App\Http\Controllers\FuelCustomerPurchaseSummaryReportController;
+use App\Http\Controllers\FuelCustomerNetIncomePrintController;
 
 Route::get('/', function () {
     return redirect('/admin/login');
@@ -33,3 +34,8 @@ Route::get(
     '/fuel-customer-purchases/print-summary-report',
     FuelCustomerPurchaseSummaryReportController::class
 )->name('fuel-customer-purchases.print-summary-report');
+
+Route::get(
+    '/fuel-customer-net-income/print-summary',
+    [FuelCustomerNetIncomePrintController::class, 'summary']
+)->name('fuel-customer-net-income.print-summary');

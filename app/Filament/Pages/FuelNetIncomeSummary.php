@@ -19,13 +19,15 @@ class FuelNetIncomeSummary extends Page
 
     protected static ?string $title = 'Customer Net Income';
 
+    public array $availableCustomers = [];
+
     protected static string | UnitEnum | null $navigationGroup = 'Customer Reports';
 
     // protected static ?int $navigationSort = 1;
 
     protected static ?int $navigationSort = 3;
 
-   protected string $view = 'filament.pages.fuel-net-income-summary';
+    protected string $view = 'filament.pages.fuel-net-income-summary';
 
     public int $year;
 
@@ -51,6 +53,7 @@ class FuelNetIncomeSummary extends Page
 
         $this->loadAvailableYears();
         $this->loadSummary();
+        $this->loadAvailableCustomers();
     }
 
     public function updatedYear($value): void
@@ -59,6 +62,7 @@ class FuelNetIncomeSummary extends Page
         $this->page = 1;
 
         $this->loadSummary();
+        $this->loadAvailableCustomers();
     }
 
     public function updatedSearch(): void
@@ -81,14 +85,14 @@ class FuelNetIncomeSummary extends Page
             ->orderByDesc('year')
             ->pluck('year')
             ->filter()
-            ->map(fn ($year) => (int) $year)
+            ->map(fn($year) => (int) $year)
             ->push((int) now()->year)
             ->unique()
             ->sortDesc()
             ->values();
 
         $this->availableYears = $years
-            ->mapWithKeys(fn (int $year) => [$year => (string) $year])
+            ->mapWithKeys(fn(int $year) => [$year => (string) $year])
             ->toArray();
     }
 
@@ -278,5 +282,18 @@ class FuelNetIncomeSummary extends Page
         }
 
         return 'fuel-amount-zero';
+    }
+
+    public function loadAvailableCustomers(): void
+    {
+        $this->availableCustomers = FuelCustomerPurchase::query()
+            ->whereYear('date_ordered', $this->year)
+            ->whereNotNull('customer')
+            ->where('customer', '!=', '')
+            ->select('customer')
+            ->distinct()
+            ->orderBy('customer')
+            ->pluck('customer', 'customer')
+            ->toArray();
     }
 }
