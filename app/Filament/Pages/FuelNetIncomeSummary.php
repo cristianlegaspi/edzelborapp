@@ -13,13 +13,17 @@ class FuelNetIncomeSummary extends Page
 {
     protected static string | BackedEnum | null $navigationIcon = Heroicon::OutlinedBanknotes;
 
-    protected static string | UnitEnum | null $navigationGroup = 'Fuel Management';
+    // protected static string | UnitEnum | null $navigationGroup = 'Customer Income Management';
 
-    protected static ?string $navigationLabel = 'Net Income Summary';
+    protected static ?string $navigationLabel = 'Customer Net Income';
 
-    protected static ?string $title = 'Net Income Summary';
+    protected static ?string $title = 'Customer Net Income';
 
-    protected static ?int $navigationSort = 50;
+    protected static string | UnitEnum | null $navigationGroup = 'Customer Reports';
+
+    // protected static ?int $navigationSort = 1;
+
+    protected static ?int $navigationSort = 3;
 
    protected string $view = 'filament.pages.fuel-net-income-summary';
 

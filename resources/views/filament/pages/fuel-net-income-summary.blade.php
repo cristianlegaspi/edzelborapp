@@ -9,11 +9,11 @@
         <div class="fuel-page-header">
             <div>
                 <h2 class="fuel-page-title">
-                    Fuel Net Income Management
+                    Customer Net Income Summary Report 
                 </h2>
 
                 <p class="fuel-page-description">
-                    Overview of all fuel customer net income and balance
+                    Overview of all customer net income and balance
                 </p>
             </div>
 
