@@ -18,14 +18,26 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
+use UnitEnum;
+
 class FuelTankerRecordResource extends Resource
 {
     protected static ?string $model = FuelTankerRecord::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::Truck;
 
-    protected static ?string $recordTitleAttribute = 'FuelTankerRecord';
+  
+    protected static ?string $navigationLabel = 'Tanker Purchases';
 
+    protected static ?string $modelLabel = 'Fuel Tanker Purchase';
+
+    protected static ?string $pluralModelLabel = 'Fuel Tanker Purchases';
+
+    protected static string | UnitEnum | null $navigationGroup = 'Tanker Reports';
+
+    protected static ?int $navigationSort = 1;
+
+   
     public static function form(Schema $schema): Schema
     {
         return FuelTankerRecordForm::configure($schema);
