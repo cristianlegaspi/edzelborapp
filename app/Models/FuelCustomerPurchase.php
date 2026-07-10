@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class FuelCustomerPurchase extends Model
 {
@@ -66,14 +67,43 @@ class FuelCustomerPurchase extends Model
     protected static function booted(): void
     {
         static::saved(function (FuelCustomerPurchase $purchase): void {
-            $fuelSalesOrderChanged = $purchase->wasChanged('fuel_sales_order_id');
-            $oldSalesOrderId = $purchase->getOriginal('fuel_sales_order_id');
+            $fuelSalesOrderChanged = $purchase->wasChanged(
+                'fuel_sales_order_id'
+            );
+
+            $oldSalesOrderId = $purchase->getOriginal(
+                'fuel_sales_order_id'
+            );
 
             $purchase->recalculateTotals();
 
             $purchase->salesOrder?->recalculateStocks();
 
-            if ($fuelSalesOrderChanged && $oldSalesOrderId && $oldSalesOrderId != $purchase->fuel_sales_order_id) {
+            /*
+        |--------------------------------------------------------------------------
+        | Automatically manage the tanker delivery record
+        |--------------------------------------------------------------------------
+        */
+            if (filled($purchase->tanker_details)) {
+                $tankerRecord = FuelTankerRecord::withTrashed()
+                    ->firstOrCreate([
+                        'fuel_customer_purchase_id' => $purchase->id,
+                    ]);
+
+                if ($tankerRecord->trashed()) {
+                    $tankerRecord->restore();
+                }
+
+                $tankerRecord->recalculateNetIncome();
+            } else {
+                $purchase->tankerRecord?->delete();
+            }
+
+            if (
+                $fuelSalesOrderChanged &&
+                $oldSalesOrderId &&
+                $oldSalesOrderId != $purchase->fuel_sales_order_id
+            ) {
                 FuelSalesOrder::query()
                     ->find($oldSalesOrderId)
                     ?->recalculateStocks();
@@ -82,11 +112,27 @@ class FuelCustomerPurchase extends Model
 
         static::deleted(function (FuelCustomerPurchase $purchase): void {
             $purchase->salesOrder?->recalculateStocks();
+
+            $purchase->tankerRecord?->delete();
         });
 
         static::restored(function (FuelCustomerPurchase $purchase): void {
             $purchase->recalculateTotals();
+
             $purchase->salesOrder?->recalculateStocks();
+
+            if (filled($purchase->tanker_details)) {
+                $tankerRecord = FuelTankerRecord::withTrashed()
+                    ->firstOrCreate([
+                        'fuel_customer_purchase_id' => $purchase->id,
+                    ]);
+
+                if ($tankerRecord->trashed()) {
+                    $tankerRecord->restore();
+                }
+
+                $tankerRecord->recalculateNetIncome();
+            }
         });
     }
 
@@ -216,5 +262,13 @@ class FuelCustomerPurchase extends Model
             'balance_short_over' => $balanceShortOver,
             'status' => $status,
         ])->saveQuietly();
+    }
+
+    public function tankerRecord(): HasOne
+    {
+        return $this->hasOne(
+            FuelTankerRecord::class,
+            'fuel_customer_purchase_id'
+        );
     }
 }

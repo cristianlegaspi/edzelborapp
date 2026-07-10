@@ -5,6 +5,7 @@ use App\Models\FuelCustomerPurchase;
 use App\Http\Controllers\FuelSoaPrintController;
 use App\Http\Controllers\FuelCustomerPurchaseSummaryReportController;
 use App\Http\Controllers\FuelCustomerNetIncomePrintController;
+use App\Http\Controllers\FuelTankerSummaryController;
 
 Route::get('/', function () {
     return redirect('/admin/login');
@@ -39,3 +40,10 @@ Route::get(
     '/fuel-customer-net-income/print-summary',
     [FuelCustomerNetIncomePrintController::class, 'summary']
 )->name('fuel-customer-net-income.print-summary');
+
+Route::middleware(['auth'])->group(function (): void {
+    Route::get(
+        '/fuel-tanker-records/print-summary',
+        [FuelTankerSummaryController::class, 'print']
+    )->name('fuel-tanker-records.print-summary');
+});
