@@ -14,7 +14,6 @@ class FuelTankerRecord extends Model
         'fuel_customer_purchase_id',
         'date_delivered',
         'driver_name',
-        'cut_off',
         'driver_salary',
         'date_paid_driver',
         'other_expenses',

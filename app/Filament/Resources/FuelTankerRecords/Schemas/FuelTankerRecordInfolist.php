@@ -85,9 +85,7 @@ class FuelTankerRecordInfolist
                             ->label('Driver Name')
                             ->placeholder('-'),
 
-                    TextEntry::make('cut_off')
-                            ->label('Cut-Off')
-                            ->placeholder('-'),
+                  
 
                         TextEntry::make('driver_salary')
                             ->label('Driver Salary')

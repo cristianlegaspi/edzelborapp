@@ -125,11 +125,6 @@ class FuelTankerRecordForm
                             ->maxLength(255)
                             ->placeholder('Enter driver name'),
 
-                       TextInput::make('cut_off')
-                            ->label('Cut-Off')
-                            ->placeholder('Example: Jan. 1–15, 2026')
-                            ->maxLength(100),
-
                         TextInput::make('driver_salary')
                             ->label('Driver Salary')
                             ->numeric()
@@ -170,14 +165,6 @@ class FuelTankerRecordForm
                                     )
                             ),
 
-                        Textarea::make('other_expenses_details')
-                            ->label('Other Expenses Details')
-                            ->placeholder(
-                                'Enter the description of the other expenses.'
-                            )
-                            ->rows(3)
-                            ->columnSpanFull(),
-
                         TextInput::make('net_income')
                             ->label('Net Income')
                             ->numeric()
@@ -191,6 +178,14 @@ class FuelTankerRecordForm
                                 fn (?FuelTankerRecord $record): float =>
                                     $record?->calculateNetIncome() ?? 0
                             ),
+
+                        Textarea::make('other_expenses_details')
+                            ->label('Other Expenses Details')
+                            ->placeholder(
+                                'Enter the description of the other expenses.'
+                            )
+                            ->rows(3)
+                            ->columnSpanFull(),
 
                         Textarea::make('remarks')
                             ->label('Remarks')

@@ -96,8 +96,7 @@
             margin-bottom: 10px;
         }
 
-        .print-actions button,
-        .print-actions a {
+        .print-actions button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -107,7 +106,6 @@
             padding: 8px 14px;
             font-size: 12px;
             font-weight: bold;
-            text-decoration: none;
             cursor: pointer;
         }
 
@@ -116,7 +114,7 @@
             color: #ffffff;
         }
 
-        .back-button {
+        .close-button {
             border: 1px solid var(--border) !important;
             background: #ffffff;
             color: var(--brand-blue-dark);
@@ -310,7 +308,7 @@
         th {
             background: #eaf2fb;
             color: var(--brand-blue-dark);
-            font-size: 6.8px;
+            font-size: 7px;
             font-weight: 800;
             line-height: 1.15;
             text-align: center;
@@ -319,12 +317,12 @@
 
         td {
             background: #ffffff;
-            font-size: 7.4px;
+            font-size: 7.6px;
             line-height: 1.2;
         }
 
         .date-column {
-            width: 7.5%;
+            width: 8%;
         }
 
         .supplier-column {
@@ -332,7 +330,7 @@
         }
 
         .customer-column {
-            width: 11%;
+            width: 12%;
         }
 
         .liters-column {
@@ -340,31 +338,27 @@
         }
 
         .freight-column {
-            width: 6.5%;
+            width: 7%;
         }
 
         .income-column {
-            width: 7%;
-        }
-
-        .driver-column {
             width: 8%;
         }
 
-        .cutoff-column {
-            width: 7.5%;
+        .driver-column {
+            width: 9%;
         }
 
         .salary-column {
-            width: 7%;
+            width: 8%;
         }
 
         .expense-column {
-            width: 7%;
+            width: 8%;
         }
 
         .net-income-column {
-            width: 7.5%;
+            width: 8%;
         }
 
         .amount {
@@ -502,12 +496,12 @@
 
             th {
                 padding: 4px 3px;
-                font-size: 6.3px;
+                font-size: 6.5px;
             }
 
             td {
                 padding: 4px 3px;
-                font-size: 6.8px;
+                font-size: 7px;
             }
 
             .section-title {
@@ -559,11 +553,6 @@
     <div class="content">
 
         @php
-            /*
-            |--------------------------------------------------------------------------
-            | Company logo
-            |--------------------------------------------------------------------------
-            */
             $logoPaths = [
                 public_path('images/logo.png'),
                 public_path('logo.png'),
@@ -592,11 +581,6 @@
                     base64_encode(file_get_contents($logoFile));
             }
 
-            /*
-            |--------------------------------------------------------------------------
-            | Formatting helpers
-            |--------------------------------------------------------------------------
-            */
             $money = static fn ($amount): string =>
                 '₱ ' . number_format((float) $amount, 2);
 
@@ -623,15 +607,17 @@
                     : $selectedTanker;
 
             $totalRecords = $records->count();
-
             $totalTankers = $groupedRecords->count();
 
             $grandLiters = (float) ($grandTotals['liters'] ?? 0);
             $grandIncome = (float) ($grandTotals['income'] ?? 0);
+
             $grandDriverSalary =
                 (float) ($grandTotals['driver_salary'] ?? 0);
+
             $grandOtherExpenses =
                 (float) ($grandTotals['other_expenses'] ?? 0);
+
             $grandNetIncome =
                 (float) ($grandTotals['net_income'] ?? 0);
         @endphp
@@ -648,7 +634,7 @@
             <button
                 type="button"
                 onclick="window.close()"
-                class="back-button"
+                class="close-button"
             >
                 Close
             </button>
@@ -831,10 +817,6 @@
                             Driver Name
                         </th>
 
-                        <th class="cutoff-column">
-                            Cut-Off
-                        </th>
-
                         <th class="salary-column">
                             Driver Salary
                         </th>
@@ -886,7 +868,7 @@
                         @endphp
 
                         <tr class="tanker-row">
-                            <td colspan="13">
+                            <td colspan="12">
                                 Tanker:
                                 {{ $tanker }}
 
@@ -945,10 +927,6 @@
                                     {{ $record->driver_name ?: '-' }}
                                 </td>
 
-                                <td class="center">
-                                    {{ $record->cut_off ?: '-' }}
-                                </td>
-
                                 <td class="amount {{ $amountClass($record->driver_salary) }}">
                                     {{ $money($record->driver_salary ?? 0) }}
                                 </td>
@@ -984,7 +962,6 @@
                             </td>
 
                             <td></td>
-                            <td></td>
 
                             <td class="amount {{ $amountClass($tankerDriverSalary) }}">
                                 {{ $money($tankerDriverSalary) }}
@@ -1002,7 +979,7 @@
                         </tr>
                     @empty
                         <tr class="empty-row">
-                            <td colspan="13">
+                            <td colspan="12">
                                 No tanker records found for the selected filter.
                             </td>
                         </tr>
@@ -1026,7 +1003,6 @@
                                 {{ $money($grandIncome) }}
                             </td>
 
-                            <td></td>
                             <td></td>
 
                             <td class="amount {{ $amountClass($grandDriverSalary) }}">

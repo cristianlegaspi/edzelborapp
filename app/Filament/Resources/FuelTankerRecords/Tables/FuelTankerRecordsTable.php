@@ -80,10 +80,7 @@ class FuelTankerRecordsTable
                 TextColumn::make('driver_name')
                     ->label('Driver Name')
                     ->placeholder('Not entered'),
-                TextColumn::make('cut_off')
-                    ->label('Cut-Off')
-                    ->placeholder('-')
-                    ->wrap(),
+              
                 TextColumn::make('driver_salary')
                     ->label('Driver Salary')
                     ->money('PHP')
