@@ -26,6 +26,12 @@ use Filament\Tables\Table;
 use Filament\Tables\Filters\SelectFilter;
 use UnitEnum;
 use Illuminate\Validation\Rules\Unique;
+use Filament\Forms\Components\FileUpload;
+use Filament\Infolists\Components\ImageEntry;
+use Filament\Tables\Columns\ImageColumn;
+use Filament\Schemas\Components\View;
+use Illuminate\Database\Eloquent\Builder;
+
 
 class FuelCustomerPaymentResource extends Resource
 {
@@ -121,11 +127,11 @@ class FuelCustomerPaymentResource extends Resource
                             ->native(false)
                             ->required(),
 
-                      TextInput::make('reference_no')
+                        TextInput::make('reference_no')
                             ->label('Reference No.')
                             ->unique(
                                 ignoreRecord: true,
-                                modifyRuleUsing: fn (Unique $rule) => $rule->whereNull('deleted_at'),
+                                modifyRuleUsing: fn(Unique $rule) => $rule->whereNull('deleted_at'),
                             )
                             ->validationMessages([
                                 'unique' => 'Oops, the payment reference is already used.',
@@ -279,6 +285,8 @@ class FuelCustomerPaymentResource extends Resource
                             ->label('Reference No.')
                             ->placeholder('-'),
 
+                      
+
                         TextEntry::make('remarks')
                             ->label('Remarks')
                             ->placeholder('-')
@@ -420,6 +428,8 @@ class FuelCustomerPaymentResource extends Resource
                     ->searchable()
                     ->copyable(),
 
+         
+
                 TextColumn::make('customerPurchase.total_payables')
                     ->label('Payables')
                     ->formatStateUsing(fn($state) => self::money($state)),
@@ -443,13 +453,27 @@ class FuelCustomerPaymentResource extends Resource
                     ]),
             ])
             ->filters([
-                SelectFilter::make('status')
+                SelectFilter::make('purchase_status')
                     ->label('Payment Status')
                     ->options([
                         'unpaid' => 'Unpaid',
                         'partial' => 'Partial',
                         'paid' => 'Paid',
-                    ]),
+                        'overpaid' => 'Overpaid',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $status = $data['value'] ?? null;
+
+                        return $query->when(
+                            filled($status),
+                            fn(Builder $query): Builder =>
+                            $query->whereHas(
+                                'customerPurchase',
+                                fn(Builder $purchaseQuery): Builder =>
+                                $purchaseQuery->where('status', $status)
+                            )
+                        );
+                    }),
             ])
             ->defaultSort('payment_date', 'desc')
             ->recordActions([

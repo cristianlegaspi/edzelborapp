@@ -26,6 +26,7 @@ use UnitEnum;
 use Filament\Tables\Filters\SelectFilter;
 use App\Filament\Resources\FuelPayments\Schemas\FuelPaymentInfolist;
 use Illuminate\Validation\Rules\Unique;
+use Illuminate\Database\Eloquent\Builder;
 
 class FuelPaymentResource extends Resource
 {
@@ -41,11 +42,11 @@ class FuelPaymentResource extends Resource
 
     protected static string | UnitEnum | null $navigationGroup = 'Supplier Reports'; // Custom group
 
-     protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 2;
 
     // protected static ?string $navigationGroup = 'Fuel Management';
 
-   
+
 
     public static function form(Schema $schema): Schema
     {
@@ -101,9 +102,9 @@ class FuelPaymentResource extends Resource
                             ->live()
                             ->required(),
 
-            
 
-                      Select::make('payment_method')
+
+                        Select::make('payment_method')
                             ->label('Payment Method')
                             ->options([
                                 'Cash' => 'Cash',
@@ -117,11 +118,11 @@ class FuelPaymentResource extends Resource
                             ->searchable()
                             ->native(false),
 
-                          TextInput::make('reference_no')
+                        TextInput::make('reference_no')
                             ->label('Reference No.')
                             ->unique(
                                 ignoreRecord: true,
-                                modifyRuleUsing: fn (Unique $rule) => $rule->whereNull('deleted_at'),
+                                modifyRuleUsing: fn(Unique $rule) => $rule->whereNull('deleted_at'),
                             )
                             ->validationMessages([
                                 'unique' => 'Oops, the payment reference is already used.',
@@ -131,7 +132,7 @@ class FuelPaymentResource extends Resource
 
                         TextInput::make('remarks')
                             ->label('Remarks')
-                           
+
                     ])
                     ->columns(3)
                     ->columnSpanFull(),
@@ -291,7 +292,7 @@ class FuelPaymentResource extends Resource
 
                 TextColumn::make('amount')
                     ->label('Amount Paid')
-                    ->formatStateUsing(fn ($state) => self::money($state))
+                    ->formatStateUsing(fn($state) => self::money($state))
                     ->sortable(),
 
                 TextColumn::make('reference_no')
@@ -304,15 +305,15 @@ class FuelPaymentResource extends Resource
 
                 TextColumn::make('salesOrder.net_amount')
                     ->label('Order Net Amount')
-                    ->formatStateUsing(fn ($state) => self::money($state)),
+                    ->formatStateUsing(fn($state) => self::money($state)),
 
                 TextColumn::make('salesOrder.paid_amount')
                     ->label('Total Paid')
-                    ->formatStateUsing(fn ($state) => self::money($state)),
+                    ->formatStateUsing(fn($state) => self::money($state)),
 
                 TextColumn::make('salesOrder.balance_amount')
                     ->label('Current Balance')
-                    ->formatStateUsing(fn ($state) => self::money($state)),
+                    ->formatStateUsing(fn($state) => self::money($state)),
 
                 TextColumn::make('salesOrder.status')
                     ->label('Order Status')
@@ -324,16 +325,28 @@ class FuelPaymentResource extends Resource
                     ]),
             ])
 
-              ->filters([
-                SelectFilter::make('status')
-                    ->label('Payment Status')
+            ->filters([
+                SelectFilter::make('sales_order_status')
+                    ->label('Order Status')
                     ->options([
                         'unpaid' => 'Unpaid',
                         'partial' => 'Partial',
                         'paid' => 'Paid',
-                    ]),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $status = $data['value'] ?? null;
+
+                        return $query->when(
+                            filled($status),
+                            fn(Builder $query): Builder => $query->whereHas(
+                                'salesOrder',
+                                fn(Builder $salesOrderQuery): Builder =>
+                                $salesOrderQuery->where('status', $status)
+                            )
+                        );
+                    }),
             ])
-            
+
             ->defaultSort('payment_date', 'desc')
             ->recordActions([
                 ViewAction::make(),
@@ -350,11 +363,11 @@ class FuelPaymentResource extends Resource
     {
         return [];
     }
-public static function infolist(Schema $schema): Schema
-{
-    return FuelPaymentInfolist::configure($schema);
-}
-   
+    public static function infolist(Schema $schema): Schema
+    {
+        return FuelPaymentInfolist::configure($schema);
+    }
+
 
     public static function getPages(): array
     {
